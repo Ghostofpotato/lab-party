@@ -47,5 +47,16 @@ intro/       studio intro
 tools/       test harnesses and release scripts
 ```
 
+## Code signing policy
+Windows builds are signed. Free code signing provided by [SignPath.io](https://about.signpath.io),
+certificate by [SignPath Foundation](https://signpath.org) (application in review; until then
+builds carry the project's own Grim Intern signature).
+- Committers and approvers: [Ghostofpotato](https://github.com/Ghostofpotato)
+- Builds come straight from this repository through GitHub Actions.
+
+## Privacy
+The game sends no personal data anywhere. It only contacts GitHub to check for a newer
+release, and the other players you choose to host or join over your network.
+
 ## License
 Code: MIT (see `LICENSE`). Third-party assets keep their own licenses, see `CREDITS.md`.

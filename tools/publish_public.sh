@@ -7,6 +7,7 @@ REPO=Ghostofpotato/lab-party
 PUB="${LP_PUBLIC_DIR:-$HOME/lab-party-public}"
 SRC="$(cd "$(dirname "$0")/.." && pwd)"
 PRIVATE=(docs BUILD_PLAN.md minigames/duck_hunt_classic/RULES.md)
+[ -n "${LP_SKIP_CI:-}" ] && PRIVATE+=(.github)
 
 if [ ! -d "$PUB/.git" ]; then
   if gh repo view "$REPO" >/dev/null 2>&1; then

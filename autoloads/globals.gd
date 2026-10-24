@@ -1,7 +1,7 @@
 extends Node
 ## Global config + version. Autoload singleton (see project.godot).
 
-const GAME_VERSION: String = "labparty-0.5.2"
+const GAME_VERSION: String = "labparty-0.5.3"
 
 ## Same random number on every peer for the current round (map variants etc.).
 var round_seed: int = 0
@@ -24,7 +24,7 @@ const MODES: Array[Dictionary] = [
 	{"slug": "firearm_factory", "name": "FIREARM FACTORY", "rule": "Build the gun first. Then use it.", "ready": true, "controls": "WASD move. Walk over the 4 gun parts, hold SPACE at your bench to build, SPACE to shoot. Unarmed SPACE punches."},
 	{"slug": "table_manners", "name": "TABLE MANNERS", "rule": "Eat while the boss looks away. Caught chewing = shot.", "ready": true, "controls": "Mash SPACE to eat. Too fast and you choke. When the boss clicks his gun and turns (HE'S TURNING), stop. Take a bite while he's watching and he shoots you."},
 	{"slug": "tunnel_hazard", "name": "TUNNEL HAZARD", "rule": "Reach the end of the tunnel. Trains do not stop.", "ready": true, "controls": "W run, A / D change lane, SPACE shove. A red lane means a train is coming."},
-	{"slug": "inside_job", "name": "INSIDE JOB", "rule": "Someone has the syringe. Do not let them reach you.", "ready": true, "controls": "WASD move. Infected: SPACE stabs. Clean: hide in the dark and run."},
+	{"slug": "inside_job", "name": "INSIDE JOB", "rule": "Everyone takes a turn as patient zero. Infect the clean, or stay clean. Most points wins.", "ready": true, "controls": "WASD move. Infected: SPACE stabs. Clean: hide in the dark and run. Clean survivor +3, each infection +1."},
 	{"slug": "smoke_break", "name": "SMOKE BREAK", "rule": "Smoke the most. Never inhale in a gust.", "ready": true, "controls": "Hold SPACE to inhale, release to exhale. Never inhale during a GUST. Drags over 1.4 s hurt. Stop for 6 s and you get shot."},
 	{"slug": "chisel_gauntlet", "name": "CHISEL GAUNTLET", "rule": "Memorize the shape. Carve it. Submit.", "ready": true, "controls": "Memorize the green shape. Click blocks to chisel them off, A / D rotate, R reset, SPACE submit. Worst carver dies."},
 	{"slug": "the_filter", "name": "THE FILTER", "rule": "Sort every item into the right bin.", "ready": true, "controls": "WASD move. SPACE grabs junk off the belt, SPACE at the right bin drops it. 3 wrong bins and you burn."},

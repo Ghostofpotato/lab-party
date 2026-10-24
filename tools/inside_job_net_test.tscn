@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://labpartyijnet"]
+
+[ext_resource type="Script" path="res://tools/inside_job_net_test.gd" id="1"]
+
+[node name="InsideJobNetTest" type="Node"]
+script = ExtResource("1")

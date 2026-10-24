@@ -1,15 +1,25 @@
 extends ArenaMinigame3D
-## Inside Job: a dark, run-down office floor. One random subject starts infected,
-## holding a giant syringe. Infected stab clean subjects (SPACE) to turn them; the
-## turned convulse, go sick green, shamble faster and join the hunt. Patient zero
-## must infect someone within 20 s or overdoses. Everyone only sees a small circle
-## around themselves (the infected see further). 45 s or until nobody is clean.
-## Clean survivors rank first, then the infected in reverse order of infection;
-## patient zero climbs one place per subject they infected.
+## Inside Job: a dark, run-down office floor, played as back-to-back short rounds.
+## Every subject (humans and bots) is patient zero exactly once, drawn from a
+## shuffled pool (max 8 rounds). Patient zero holds a giant syringe; the infected
+## stab clean subjects (SPACE) to turn them, the turned convulse, go sick green,
+## shamble faster and join the hunt. Patient zero must infect someone within 12 s
+## or overdoses. Everyone only sees a small circle around themselves (the infected
+## see further). A round lasts 26 s or until nobody is clean, then everyone is
+## reset clean at the spawns. Points: survive a round clean +3, every subject you
+## infect +1, patient zero +2 more if everyone got infected. Most points wins;
+## ties go to fewer overdoses, then fewer times infected.
 
-const TIME_LIMIT: float = 45.0
-const OVERDOSE_T: float = 20.0
-const START_DELAY: float = 1.6
+const TIME_LIMIT: float = 26.0
+const OVERDOSE_T: float = 12.0
+const CARD_T: float = 2.6
+const END_T: float = 2.4
+const MAX_ROUNDS: int = 8
+const PTS_CLEAN: int = 3
+const PTS_INFECT: int = 1
+const PTS_SWEEP: int = 2
+const SPAWN_PTS: Array = [Vector3(8.0, 0, 5.4), Vector3(1.0, 0, 0.9), Vector3(15.0, 0, 0.9), Vector3(1.0, 0, 9.2),
+	Vector3(15.0, 0, 9.2), Vector3(8.0, 0, 9.3), Vector3(4.4, 0, 5.4), Vector3(11.6, 0, 5.4)]
 const BASE_SPEED: float = 4.6
 const INF_SPEED: float = 4.6 * 1.15
 const STAB_R: float = 1.35
@@ -67,6 +77,20 @@ var _clock: float = 0.0
 var _running: bool = false
 var _done: bool = false
 var _space_down: bool = false
+var _live: bool = false
+var _scored: bool = false
+var _play_t: float = 0.0
+var _round: int = 0
+var _rounds: int = 0
+var _pool: Array = []
+var _tally: Dictionary = {}
+var _ods: Dictionary = {}
+var _hits: Dictionary = {}
+var _ever: Array = []
+var _zero_ok: Array = []
+var _look: Dictionary = {}
+var _od_hud: bool = false
+var _big_tw: Tween
 var _fog_mat: ShaderMaterial
 var _fog_r: float = SEE_CLEAN
 var _halo: OmniLight3D
@@ -91,9 +115,16 @@ func begin() -> void:
 		infected_by[id] = 0
 		stun[id] = 0.0
 		stab_cd[id] = 0.0
-		bots[id] = {"t": randf_range(0.0, 0.3), "path": [], "goal": Vector3.INF, "react": randf_range(0.3, 0.55), "seen": {}, "sniff": Vector3.INF, "sniff_t": 0.0}
-		players[id].speed = BASE_SPEED
-		players[id].bot_brain = _bot_brain.bind(id)
+		_tally[id] = 0
+		_ods[id] = 0
+		_hits[id] = 0
+		_reset_bot(id)
+		var p: LabPlayer3D = players[id]
+		_look[id] = [p.body.suit_color, p.body.pattern]
+		p.speed = BASE_SPEED
+		p.bot_brain = _bot_brain.bind(id)
+		if p.is_local_human():
+			p.input_enabled = false
 	_build_fog()
 	_build_hud()
 	if NetworkManager.is_server():
@@ -112,12 +143,13 @@ func _tune_light() -> void:
 	env.fog_light_color = Color(0.16, 0.18, 0.15)
 	env.adjustment_saturation = 0.7
 
+func _reset_bot(id: int) -> void:
+	bots[id] = {"t": randf_range(0.0, 0.3), "path": [], "goal": Vector3.INF, "react": randf_range(0.3, 0.55), "seen": {}, "sniff": Vector3.INF, "sniff_t": 0.0}
+
 func _spawns() -> Array:
-	var pts: Array = [Vector3(8.0, 0, 5.4), Vector3(1.0, 0, 0.9), Vector3(15.0, 0, 0.9), Vector3(1.0, 0, 9.2),
-		Vector3(15.0, 0, 9.2), Vector3(8.0, 0, 9.3), Vector3(4.4, 0, 5.4), Vector3(11.6, 0, 5.4)]
 	var a: Array = []
 	for i in NetworkManager.players.size():
-		a.append(pts[i % pts.size()])
+		a.append(SPAWN_PTS[i % SPAWN_PTS.size()])
 	return a
 
 func _solid(r: Rect2, h: float, opaque: bool, visual: Material = null, parent: Node = null) -> void:
@@ -461,9 +493,9 @@ func _build_fog() -> void:
 	world.add_child(_halo)
 
 func _build_hud() -> void:
-	hud_title("INSIDE JOB  ·  don't get stuck")
+	hud_title("INSIDE JOB  ·  everyone takes a turn as patient zero")
 	_hud_help = Label.new()
-	_hud_help.text = "WASD move  ·  hide in the dark  ·  infected: SPACE stab"
+	_hud_help.text = "WASD move  ·  hide in the dark  ·  infected: SPACE stab\nclean survivor +3  ·  each infection +1  ·  zero infects all +2"
 	_hud_help.position = Vector2(16, 42)
 	_style(_hud_help, 16, Color("e8e2c8"))
 	hud.add_child(_hud_help)
@@ -472,8 +504,8 @@ func _build_hud() -> void:
 	_style(_hud_time, 26, Color("b8f5c4"))
 	hud.add_child(_hud_time)
 	_hud_board = Label.new()
-	_hud_board.position = Vector2(930, 12)
-	_style(_hud_board, 16, Color("e8e2c8"))
+	_hud_board.position = Vector2(912, 10)
+	_style(_hud_board, 15, Color("e8e2c8"))
 	hud.add_child(_hud_board)
 	_hud_status = Label.new()
 	_hud_status.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
@@ -506,7 +538,7 @@ func _inf_alive() -> Array:
 func _refresh_hud() -> void:
 	var me := multiplayer.get_unique_id()
 	var lp := local_player()
-	if lp == null:
+	if lp == null or _done_hud():
 		_hud_status.text = ""
 	elif not lp.alive:
 		_hud_status.text = "OVERDOSED"
@@ -520,20 +552,51 @@ func _refresh_hud() -> void:
 	else:
 		_hud_status.text = "CLEAN  ·  stay away from the syringe"
 		_hud_status.add_theme_color_override("font_color", Color("e8e2c8"))
-	_hud_board.text = "CLEAN     %d\nINFECTED  %d" % [_clean_ids().size(), _inf_alive().size()]
+	var head := "ROUND %d/%d" % [maxi(_round, 1), maxi(_rounds, 1)]
+	if _done_hud():
+		head = "FINAL"
+	var lines: Array[String] = [head, "CLEAN %d  ·  INFECTED %d" % [_clean_ids().size(), _inf_alive().size()]]
+	var ids: Array = players.keys()
+	ids.sort_custom(func(a, b): return _shown_pts(a) > _shown_pts(b))
+	for id in ids:
+		var nm: String = str(players[id].display_name).substr(0, 11)
+		lines.append("%s%-11s %3d" % ["> " if id == me else "  ", nm, _shown_pts(id)])
+	_hud_board.text = "\n".join(lines)
+
+func _done_hud() -> bool:
+	return _rounds > 0 and _round > _rounds
+
+func _shown_pts(id: int) -> int:
+	return int(_tally.get(id, 0)) + (0 if _scored else int(infected_by.get(id, 0)) * PTS_INFECT)
+
+func _big(text: String, hold: float) -> void:
+	_od_hud = false
+	if _big_tw:
+		_big_tw.kill()
+	_hud_big.text = text
+	_hud_big.modulate.a = 1.0
+	if hold >= 0.0:
+		_big_tw = _hud_big.create_tween()
+		_big_tw.tween_property(_hud_big, "modulate:a", 0.0, 0.6).set_delay(hold)
 
 func _process(delta: float) -> void:
 	_clock += delta
+	if _live:
+		_play_t += delta
 	if _hud_time:
-		var left := clampf(TIME_LIMIT - (_clock - START_DELAY), 0.0, TIME_LIMIT)
-		_hud_time.text = "%d" % ceili(left)
-		_hud_help.modulate.a = clampf(9.0 - _clock, 0.0, 1.0)
-		_hud_big.modulate.a = clampf(4.5 - _clock, 0.0, 1.0) if _clock < 6.0 else _hud_big.modulate.a
+		_hud_time.text = "%d" % ceili(clampf(TIME_LIMIT - _play_t, 0.0, TIME_LIMIT))
+		_hud_help.modulate.a = clampf(10.0 - _clock, 0.0, 1.0)
 		var me := multiplayer.get_unique_id()
-		if me == zero_id and infected.has(me) and infected_by.get(me, 0) == 0 and not overdosed and _clock > START_DELAY:
-			var od := OVERDOSE_T - (_clock - START_DELAY)
-			_hud_big.text = "OVERDOSE IN %d" % ceili(maxf(od, 0.0))
-			_hud_big.modulate.a = 1.0 if od < 8.0 else _hud_big.modulate.a
+		if _live and me == zero_id and infected.has(me) and int(infected_by.get(me, 0)) == 0 and not overdosed:
+			var od := OVERDOSE_T - _play_t
+			if od < 8.0:
+				if not _od_hud:
+					_big("", -1.0)
+					_od_hud = true
+				_hud_big.text = "OVERDOSE IN %d" % ceili(maxf(od, 0.0))
+		elif _od_hud:
+			_od_hud = false
+			_hud_big.modulate.a = 0.0
 	_flicker(delta)
 	_update_cam(delta)
 	_update_fog(delta)
@@ -542,15 +605,14 @@ func _process(delta: float) -> void:
 		var m: ArmPose = s.mod
 		m.active = _clock > float(s.get("hold", 0.0))
 	var lp := local_player()
-	if lp and lp.alive and _clock > START_DELAY:
-		var down := Input.is_physical_key_pressed(KEY_SPACE)
-		if down != _space_down:
-			_space_down = down
-			if down and infected.has(lp.peer_id):
-				if multiplayer.is_server():
-					_req_stab()
-				else:
-					_req_stab.rpc_id(1)
+	var down := Input.is_physical_key_pressed(KEY_SPACE)
+	if down != _space_down:
+		_space_down = down
+		if down and _live and lp and lp.alive and infected.has(lp.peer_id):
+			if multiplayer.is_server():
+				_req_stab()
+			else:
+				_req_stab.rpc_id(1)
 
 func _flicker(delta: float) -> void:
 	for f in lights_flicker:
@@ -617,25 +679,67 @@ func _update_fog(delta: float) -> void:
 		p._label.visible = near
 
 func _run() -> void:
-	var ids: Array = players.keys()
-	if ids.is_empty():
+	_pool = players.keys()
+	_pool.shuffle()
+	if _pool.size() > MAX_ROUNDS:
+		_pool.resize(MAX_ROUNDS)
+	var total := _pool.size()
+	if total == 0:
 		_finish()
 		return
-	zero_id = ids[randi() % ids.size()]
-	stun[zero_id] = START_DELAY + 0.4
-	_rpc_start.rpc(zero_id)
-	await get_tree().create_timer(START_DELAY).timeout
-	_running = true
-	var t := 0.0
-	while t < TIME_LIMIT and not _clean_ids().is_empty() and not _inf_alive().is_empty():
-		await get_tree().create_timer(0.1).timeout
-		t += 0.1
-		if t >= OVERDOSE_T and not overdosed and infected_by[zero_id] == 0 and players[zero_id].alive:
-			overdosed = true
-			_rpc_overdose.rpc(zero_id)
-	_running = false
-	await get_tree().create_timer(1.2).timeout
+	var r := 0
+	while not _pool.is_empty():
+		var z: int = _pool.pop_front()
+		if not players.has(z) or not is_instance_valid(players[z]):
+			continue
+		r += 1
+		var ids: Array = players.keys()
+		var pts: Array = SPAWN_PTS.duplicate()
+		pts.shuffle()
+		var at: Array = []
+		for i in ids.size():
+			at.append(pts[i % pts.size()] + Vector3(0.5 * float(i / pts.size()), 0, 0))
+		_rpc_round.rpc(r, total, z, ids, at)
+		await get_tree().create_timer(CARD_T).timeout
+		_rpc_go.rpc()
+		_running = true
+		var t := 0.0
+		while t < TIME_LIMIT and not _clean_ids().is_empty() and not _inf_alive().is_empty():
+			await get_tree().create_timer(0.1).timeout
+			t += 0.1
+			if t >= OVERDOSE_T and not overdosed and int(infected_by.get(z, 0)) == 0 and players[z].alive:
+				overdosed = true
+				_rpc_overdose.rpc(z)
+		_running = false
+		_rpc_round_over.rpc(_score_round(z), _tally, _ods, _hits)
+		await get_tree().create_timer(END_T).timeout
+	var order := _placement()
+	_rpc_final.rpc(_ever, _zero_ok, order)
+	await get_tree().create_timer(1.0).timeout
 	_finish()
+
+func _score_round(z: int) -> String:
+	var clean := _clean_ids()
+	for id in clean:
+		_tally[id] = int(_tally.get(id, 0)) + PTS_CLEAN
+	for id in players:
+		_tally[id] = int(_tally.get(id, 0)) + int(infected_by.get(id, 0)) * PTS_INFECT
+	for id in infected:
+		if id != z:
+			_hits[id] = int(_hits.get(id, 0)) + 1
+			if not _ever.has(id):
+				_ever.append(id)
+	var zn: String = str(players[z].display_name)
+	if overdosed:
+		_ods[z] = int(_ods.get(z, 0)) + 1
+	if int(infected_by.get(z, 0)) > 0 and not _zero_ok.has(z):
+		_zero_ok.append(z)
+	if clean.is_empty() and infected.size() == players.size() and players.size() > 1:
+		_tally[z] = int(_tally.get(z, 0)) + PTS_SWEEP
+		return "EVERYONE INFECTED  ·  %s +%d" % [zn, PTS_SWEEP]
+	if overdosed:
+		return "%s OVERDOSED  ·  %d clean +%d" % [zn, clean.size(), PTS_CLEAN]
+	return "%d SURVIVED CLEAN  ·  +%d each" % [clean.size(), PTS_CLEAN]
 
 func _finish() -> void:
 	if _done:
@@ -644,19 +748,16 @@ func _finish() -> void:
 	finished.emit(_placement())
 
 func _placement() -> Array:
-	var out: Array = _clean_ids()
-	var victims: Array = []
-	for i in range(infected.size() - 1, -1, -1):
-		if infected[i] != zero_id:
-			victims.append(infected[i])
-	if zero_id != -1 and players.has(zero_id):
-		if players[zero_id].alive:
-			victims.insert(clampi(victims.size() - int(infected_by.get(zero_id, 0)), 0, victims.size()), zero_id)
-	out.append_array(victims)
-	for id in players.keys():
-		if not out.has(id):
-			out.append(id)
-	return out
+	var ids: Array = players.keys()
+	ids.sort_custom(_rank)
+	return ids
+
+func _rank(a: int, b: int) -> bool:
+	if int(_tally.get(a, 0)) != int(_tally.get(b, 0)):
+		return int(_tally.get(a, 0)) > int(_tally.get(b, 0))
+	if int(_ods.get(a, 0)) != int(_ods.get(b, 0)):
+		return int(_ods.get(a, 0)) < int(_ods.get(b, 0))
+	return int(_hits.get(a, 0)) < int(_hits.get(b, 0))
 
 func _physics_process(delta: float) -> void:
 	for id in stun:
@@ -718,14 +819,104 @@ func _do_stab(id: int) -> void:
 	_rpc_stab.rpc(id, v, order, infected_by[id])
 
 @rpc("authority", "call_local", "reliable")
-func _rpc_start(zid: int) -> void:
+func _rpc_round(r: int, total: int, zid: int, ids: Array, at: Array) -> void:
+	_round = r
+	_rounds = total
 	zero_id = zid
 	infected = [zid]
-	stun[zid] = START_DELAY + 0.4
+	overdosed = false
+	_live = false
+	_scored = false
+	_play_t = 0.0
+	for id in syringes:
+		var s: Dictionary = syringes[id]
+		(s.att as Node).queue_free()
+		(s.mod as Node).queue_free()
+	syringes.clear()
+	for id in players:
+		infected_by[id] = 0
+		stun[id] = CARD_T + 1.0
+		stab_cd[id] = 0.0
+		_reset_bot(id)
+		_reset_player(id)
+	for i in ids.size():
+		var id: int = ids[i]
+		if not players.has(id) or not is_instance_valid(players[id]):
+			continue
+		var p: LabPlayer3D = players[id]
+		var v: Vector3 = at[i]
+		p.position = v
+		p._target = v
+		p.velocity = Vector3.ZERO
+		p.face(Vector3(W * 0.5, 0.0, D * 0.5) - v)
+	_turn(zid, 2.1, r)
 	var z: LabPlayer3D = players[zid]
-	_hud_big.text = "PATIENT ZERO: %s" % z.display_name
-	_turn(zid, 2.1)
+	_big("ROUND %d/%d  ·  PATIENT ZERO: %s" % [r, total, z.display_name], -1.0)
 	Fx.sfx("buzzer", null, -6.0)
+	_refresh_hud()
+
+func _reset_player(id: int) -> void:
+	var p: LabPlayer3D = players[id]
+	if not is_instance_valid(p):
+		return
+	if p.body.anim.get_animation_library("") == _zombie_lib:
+		p.body.anim.stop()
+		p.body.anim.remove_animation_library("")
+		p.body.anim.add_animation_library("", LabCharacter.shared_library())
+	p.body.anim.speed_scale = 1.0
+	p.body._action_busy = false
+	p.set_alive(true)
+	p.body.revive()
+	var lk: Array = _look.get(id, [p.color, 0])
+	var pat: int = lk[1]
+	p.body.set_suit_color(lk[0])
+	p.body.pattern = pat
+	for sm in p.body._suit_mats:
+		(sm as ShaderMaterial).set_shader_parameter("pattern", pat)
+	p._label.modulate = p.color.lightened(0.35)
+	if p._title:
+		p._title.modulate.a = 1.0
+	p.speed = BASE_SPEED
+	if p.is_local_human():
+		p.input_enabled = false
+
+@rpc("authority", "call_local", "reliable")
+func _rpc_go() -> void:
+	_live = true
+	_play_t = 0.0
+	for id in stun:
+		stun[id] = 0.0
+	stun[zero_id] = 0.4
+	var lp := local_player()
+	if lp and lp.alive:
+		lp.input_enabled = true
+	_big(_hud_big.text, 0.2)
+	_refresh_hud()
+
+@rpc("authority", "call_local", "reliable")
+func _rpc_round_over(text: String, tally: Dictionary, ods: Dictionary, hits: Dictionary) -> void:
+	_live = false
+	_scored = true
+	_tally = tally
+	_ods = ods
+	_hits = hits
+	var lp := local_player()
+	if lp:
+		lp.input_enabled = false
+	_big(text, END_T - 0.6)
+	Fx.sfx("beep", null, -8.0)
+	_refresh_hud()
+
+@rpc("authority", "call_local", "reliable")
+func _rpc_final(ever: Array, zero_ok: Array, order: Array) -> void:
+	_live = false
+	_round = _rounds + 1
+	var me := multiplayer.get_unique_id()
+	infected = ever.duplicate()
+	zero_id = me if zero_ok.has(me) else -1
+	var top: String = str(players[order[0]].display_name) if not order.is_empty() and players.has(order[0]) else "?"
+	_big("TEST OVER  ·  %s WINS" % top, -1.0)
+	Fx.sfx("win", null, -6.0)
 	_refresh_hud()
 
 @rpc("authority", "call_local", "reliable")
@@ -752,19 +943,19 @@ func _rpc_stab(id: int, victim: int, order: Array, count: int) -> void:
 		Fx.shake(0.25)
 		if v.is_local_human():
 			v.input_enabled = false
-		get_tree().create_timer(0.36).timeout.connect(_convulse.bind(victim))
-		get_tree().create_timer(STUN_T).timeout.connect(_turn.bind(victim, 1.55))
+		get_tree().create_timer(0.36).timeout.connect(_convulse.bind(victim, _round))
+		get_tree().create_timer(STUN_T).timeout.connect(_turn.bind(victim, 1.55, _round))
 	_refresh_hud()
 
-func _convulse(id: int) -> void:
+func _convulse(id: int, r: int) -> void:
 	var v: LabPlayer3D = players[id]
-	if is_instance_valid(v) and v.alive:
+	if r == _round and is_instance_valid(v) and v.alive:
 		v.body.play_action("Hit_Chest", 0.04, 0.9)
 		Fx.sfx("hit", v.position, -6.0, 0.6)
 
-func _turn(id: int, syringe_scale: float) -> void:
+func _turn(id: int, syringe_scale: float, r: int) -> void:
 	var p: LabPlayer3D = players[id]
-	if not is_instance_valid(p) or not p.alive:
+	if r != _round or not is_instance_valid(p) or not p.alive:
 		return
 	var c := p.color
 	var g := c.get_luminance()
@@ -774,7 +965,7 @@ func _turn(id: int, syringe_scale: float) -> void:
 	p.speed = INF_SPEED
 	_zombify(p.body)
 	_attach_syringe(id, syringe_scale)
-	if p.is_local_human():
+	if p.is_local_human() and _live:
 		p.input_enabled = true
 	Fx.sfx("arm", p.position, -6.0, 0.6)
 	_refresh_hud()
@@ -851,9 +1042,7 @@ func _rpc_overdose(id: int) -> void:
 		syringes[id].mod.active = false
 		syringes[id].hold = 99999.0
 	Fx.sfx("buzzer", null, -4.0)
-	_hud_big.text = "%s OVERDOSED" % p.display_name
-	_hud_big.modulate.a = 1.0
-	_hud_big.create_tween().tween_property(_hud_big, "modulate:a", 0.0, 0.6).set_delay(2.5)
+	_big("%s OVERDOSED" % p.display_name, 2.5)
 	_refresh_hud()
 
 func _center(i: int) -> Vector3:

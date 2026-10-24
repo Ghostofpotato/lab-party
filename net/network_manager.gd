@@ -18,6 +18,8 @@ enum Backend { ENET, STEAM }
 var backend: MultiplayerBackend
 var backend_type: Backend = Backend.ENET
 var local_name: String = "Player"
+## Joins as an AI subject: the host drives this player with the minigames' bot brains.
+var autopilot: bool = false
 
 ## peer_id -> { name:String, is_bot:bool, score:int, color:Color, hat:String, sex:String,
 ##   suit:Color, pattern:int, hair:Color, hat_tint:String, title:String, title_rarity:int, death_fx:String }
@@ -163,7 +165,10 @@ func _on_peer_disconnected(id: int) -> void:
 
 func _on_connected() -> void:
 	connected_to_server.emit()
-	_rpc_register_me.rpc_id(1, local_name, Profile.local_look())
+	var look: Dictionary = Profile.local_look()
+	if autopilot:
+		look["autopilot"] = true
+	_rpc_register_me.rpc_id(1, local_name, look)
 
 func _on_loadout_changed() -> void:
 	if multiplayer.multiplayer_peer == null or multiplayer.multiplayer_peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED:
@@ -189,7 +194,7 @@ func _rpc_register_me(pname: String, look: Dictionary = {}) -> void:
 	if not is_server():
 		return
 	var id := multiplayer.get_remote_sender_id()
-	_add_player(id, pname.left(16), false, look)
+	_add_player(id, pname.left(16), bool(look.get("autopilot", false)), look)
 	_broadcast_roster()
 
 @rpc("authority", "call_local", "reliable")

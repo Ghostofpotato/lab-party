@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://labpartyclaudejoin"]
+
+[ext_resource type="Script" path="res://tools/claude_join.gd" id="1"]
+
+[node name="ClaudeJoin" type="Node"]
+script = ExtResource("1")

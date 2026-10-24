@@ -1,0 +1,34 @@
+; Lab Party: a party-elimination game by Grim Intern.
+; Autoload spine + transport-agnostic net backend + minigame round director.
+
+config_version=5
+
+[application]
+
+config/name="Lab Party"
+run/main_scene="res://Main.tscn"
+config/features=PackedStringArray("4.5", "Forward Plus")
+boot_splash/show_image=false
+
+[autoload]
+
+Globals="*res://autoloads/globals.gd"
+NetworkManager="*res://net/network_manager.gd"
+GameManager="*res://autoloads/game_manager.gd"
+Fx="*res://autoloads/fx.gd"
+Gfx="*res://autoloads/gfx.gd"
+Updater="*res://autoloads/updater.gd"
+Profile="*res://autoloads/profile.gd"
+
+[display]
+
+window/size/viewport_width=1152
+window/size/viewport_height=648
+window/stretch/mode="canvas_items"
+window/size/window_width_override=1600
+window/size/window_height_override=900
+window/size/mode=3
+
+[rendering]
+
+renderer/rendering_method="forward_plus"

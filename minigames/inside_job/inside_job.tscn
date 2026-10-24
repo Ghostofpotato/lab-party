@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://labpartyinsidejob"]
+
+[ext_resource type="Script" path="res://minigames/inside_job/inside_job.gd" id="1_ij"]
+
+[node name="InsideJob" type="Node"]
+script = ExtResource("1_ij")

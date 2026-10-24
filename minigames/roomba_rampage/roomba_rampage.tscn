@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://labpartyroombarampage"]
+
+[ext_resource type="Script" path="res://minigames/roomba_rampage/roomba_rampage.gd" id="1_rr"]
+
+[node name="RoombaRampage" type="Node"]
+script = ExtResource("1_rr")

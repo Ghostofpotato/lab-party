@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://labpartyduckhuntclassic"]
+
+[ext_resource type="Script" path="res://minigames/duck_hunt_classic/duck_hunt_classic.gd" id="1_dhc"]
+
+[node name="DuckHuntClassic" type="Node"]
+script = ExtResource("1_dhc")

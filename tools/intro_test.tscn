@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://labpartyintrotest"]
+
+[ext_resource type="Script" path="res://tools/intro_test.gd" id="1_it"]
+
+[node name="IntroTest" type="Node"]
+script = ExtResource("1_it")

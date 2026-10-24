@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://labpartychiselgauntlet"]
+
+[ext_resource type="Script" path="res://minigames/chisel_gauntlet/chisel_gauntlet.gd" id="1_cg"]
+
+[node name="ChiselGauntlet" type="Node"]
+script = ExtResource("1_cg")

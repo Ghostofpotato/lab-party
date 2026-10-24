@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://labpartyseatassignment"]
+
+[ext_resource type="Script" path="res://minigames/seat_assignment/seat_assignment.gd" id="1_sa"]
+
+[node name="SeatAssignment" type="Node"]
+script = ExtResource("1_sa")

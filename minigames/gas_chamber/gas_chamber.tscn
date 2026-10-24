@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://labpartygaschamber"]
+
+[ext_resource type="Script" path="res://minigames/gas_chamber/gas_chamber.gd" id="1_gc"]
+
+[node name="GasChamber" type="Node"]
+script = ExtResource("1_gc")

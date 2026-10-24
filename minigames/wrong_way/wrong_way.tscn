@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://labpartywrongway"]
+
+[ext_resource type="Script" path="res://minigames/wrong_way/wrong_way.gd" id="1_ww"]
+
+[node name="WrongWay" type="Node"]
+script = ExtResource("1_ww")

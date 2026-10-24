@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://labpartylethalrebound"]
+
+[ext_resource type="Script" path="res://minigames/lethal_rebound/lethal_rebound.gd" id="1_lr"]
+
+[node name="LethalRebound" type="Node"]
+script = ExtResource("1_lr")

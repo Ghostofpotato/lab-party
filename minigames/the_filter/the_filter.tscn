@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://labpartythefilter"]
+
+[ext_resource type="Script" path="res://minigames/the_filter/the_filter.gd" id="1_tf"]
+
+[node name="TheFilter" type="Node"]
+script = ExtResource("1_tf")

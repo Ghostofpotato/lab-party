@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://labpartytunnelhazard"]
+
+[ext_resource type="Script" path="res://minigames/tunnel_hazard/tunnel_hazard.gd" id="1_th"]
+
+[node name="TunnelHazard" type="Node"]
+script = ExtResource("1_th")

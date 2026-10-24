@@ -32,6 +32,12 @@ float fbm(vec2 p) {
 	return v;
 }
 
+float stripe(float x) {
+	float tri = abs(fract(x) - 0.5) * 2.0;
+	float w = fwidth(x) * 1.5 + 0.0001;
+	return smoothstep(0.5 - w, 0.5 + w, tri);
+}
+
 void fragment() {
 	vec3 base = texture(albedo_tex, UV).rgb;
 	vec2 m = texture(suit_mask, UV).rg;
@@ -43,7 +49,7 @@ void fragment() {
 	vec3 emit = vec3(0.0);
 	float fres = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 2.5);
 	if (pattern == 1) {
-		float s = step(0.5, fract((UV.x + UV.y) * 16.0));
+		float s = stripe((UV.x + UV.y) * 16.0);
 		suit = mix(vec3(0.03, 0.03, 0.025) * shade, pattern_color * shade, s);
 	} else if (pattern == 2) {
 		float n1 = fbm(UV * 11.0);
@@ -64,7 +70,7 @@ void fragment() {
 		rough_s = mix(0.85, 0.22, b);
 	} else if (pattern == 5) {
 		float n = fbm(UV * 9.0);
-		suit = mix(suit, vec3(0.07, 0.06, 0.04), clamp(n * 0.95, 0.0, 0.8));
+		suit = mix(suit, vec3(0.13, 0.11, 0.08), clamp(n * 0.95, 0.0, 0.75));
 		dirt_k = 2.2;
 	} else if (pattern == 6) {
 		float g = smoothstep(0.53, 0.64, fbm(UV * 10.0));
@@ -85,16 +91,22 @@ void fragment() {
 		dirt_k = 0.2;
 		emit = vec3(0.9, 0.45, 0.0) * fres * 1.2;
 	} else if (pattern == 9) {
-		float s = step(0.5, fract(UV.y * 22.0));
+		float s = stripe(UV.y * 22.0);
 		suit = mix(suit, pattern_color * shade, s);
 	}
-	float dirt = smoothstep(0.35, 0.0, dot(base, vec3(0.333))) * grime * dirt_k;
+	float dirt = (1.0 - smoothstep(0.0, 0.35, dot(base, vec3(0.333)))) * grime * dirt_k;
 	suit = mix(suit, suit * 0.45 + vec3(0.03, 0.025, 0.02), clamp(dirt, 0.0, 1.0));
+	float weave_fade = 1.0 - smoothstep(0.004, 0.02, length(fwidth(UV)));
+	float weave = (vnoise(UV * 380.0) - 0.5) * 0.14 * weave_fade * m.r;
+	suit *= 1.0 + weave;
 	ALBEDO = mix(base, suit, m.r);
 	vec3 orm = texture(orm_tex, UV).rgb;
 	AO = orm.r;
 	ROUGHNESS = mix(orm.g, rough_s, m.r);
 	METALLIC = mix(orm.b, metal_s, m.r);
-	EMISSION = emit * m.r;
+	EMISSION = emit * m.r + ALBEDO * 0.07 * m.r;
+	SPECULAR = mix(0.4, mix(0.32, 0.55, metal_s), m.r);
+	RIM = mix(0.18, 0.4, m.r) * (1.0 - metal_s);
+	RIM_TINT = 0.55;
 	NORMAL_MAP = texture(normal_tex, UV).rgb;
 }

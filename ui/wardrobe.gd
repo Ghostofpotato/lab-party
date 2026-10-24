@@ -1,14 +1,13 @@
 extends Control
 class_name Wardrobe
-## Wardrobe terminal: live turntable preview of your subject, category tabs with
-## rarity-coloured item cards (locked ones show their challenge and progress),
-## and a CHALLENGES tab with every challenge and its progress bar. Equipping
-## saves to the Profile immediately.
+## Wardrobe: live turntable preview of your subject, underline tabs per
+## category, rarity-tinted item cards (locked ones show their challenge and
+## progress) and a CHALLENGES tab with progress bars. Equipping saves at once.
 
 signal closed()
 
 const TABS: Array[String] = ["body", "suit", "pattern", "hair", "hat", "title", "death_fx", "challenges"]
-const CARD_W: float = 196.0
+const CARD_W: float = 186.0
 
 var tab: String = "body"
 var _backdrop: MenuBackdrop
@@ -28,19 +27,7 @@ func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_backdrop = MenuBackdrop.new()
 	add_child(_backdrop)
-	var tr := TextureRect.new()
-	var g := Gradient.new()
-	g.set_color(0, Color(0, 0, 0, 0.9))
-	g.set_color(1, Color(0, 0, 0, 0.0))
-	var gt := GradientTexture2D.new()
-	gt.gradient = g
-	gt.fill_from = Vector2(0.5, 0.5)
-	gt.fill_to = Vector2(0.75, 0.5)
-	tr.texture = gt
-	tr.set_anchors_preset(Control.PRESET_FULL_RECT)
-	tr.stretch_mode = TextureRect.STRETCH_SCALE
-	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(tr)
+	add_child(UiKit.scrim(true, 0.72, 0.92))
 	add_child(UiKit.scanlines())
 	_build_left()
 	_build_plate()
@@ -51,48 +38,60 @@ func _build_left() -> void:
 	var m := MarginContainer.new()
 	m.set_anchors_preset(Control.PRESET_LEFT_WIDE)
 	m.offset_right = 690
-	m.add_theme_constant_override("margin_left", 32)
-	m.add_theme_constant_override("margin_top", 22)
-	m.add_theme_constant_override("margin_bottom", 18)
+	m.add_theme_constant_override("margin_left", 40)
+	m.add_theme_constant_override("margin_top", 32)
+	m.add_theme_constant_override("margin_bottom", 26)
 	add_child(m)
+	UiKit.slide_in.call_deferred(m, Vector2(-24, 0))
 	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 6)
+	v.add_theme_constant_override("separation", 0)
 	m.add_child(v)
+	v.add_child(UiKit.label("Facility 7 · Issued equipment", 13, UiKit.ACCENT))
 	var head := HBoxContainer.new()
-	head.add_theme_constant_override("separation", 14)
+	head.add_theme_constant_override("separation", 18)
 	v.add_child(head)
-	head.add_child(UiKit.heading("WARDROBE", 52))
+	head.add_child(UiKit.heading("Wardrobe", 56))
 	var hv := VBoxContainer.new()
-	hv.alignment = BoxContainer.ALIGNMENT_CENTER
-	hv.add_theme_constant_override("separation", 0)
+	hv.alignment = BoxContainer.ALIGNMENT_END
 	head.add_child(hv)
-	hv.add_child(UiKit.text("FACILITY 7 · ISSUED EQUIPMENT", 13, UiKit.GREEN_DIM))
-	_count = UiKit.text("", 15, UiKit.AMBER)
+	_count = UiKit.label("", 14, UiKit.MUTED)
 	hv.add_child(_count)
+	hv.add_child(UiKit.spacer(10))
+	v.add_child(UiKit.spacer(8))
 	var tabs := HBoxContainer.new()
-	tabs.add_theme_constant_override("separation", 4)
+	tabs.add_theme_constant_override("separation", 2)
 	v.add_child(tabs)
 	for t in TABS:
-		var b := UiKit.button(Profile.CATEGORY_NAMES.get(t, "CHALLENGES"), select_tab.bind(t), 19)
-		b.alignment = HORIZONTAL_ALIGNMENT_CENTER
-		b.custom_minimum_size = Vector2(0, 32)
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var b := Button.new()
+		b.text = str(Profile.CATEGORY_NAMES.get(t, "CHALLENGES"))
+		b.add_theme_font_size_override("font_size", 15)
+		b.custom_minimum_size = Vector2(0, 38)
+		if t == "challenges":
+			var gap := Control.new()
+			gap.custom_minimum_size = Vector2(14, 0)
+			tabs.add_child(gap)
+		b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		b.pressed.connect(func(): Fx.sfx("click", null, -8.0); select_tab(t))
 		tabs.add_child(b)
 		_tab_buttons[t] = b
-	var p := UiKit.panel()
+	v.add_child(UiKit.hairline())
+	v.add_child(UiKit.spacer(12))
+	var p := UiKit.panel(12)
 	p.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	p.add_theme_stylebox_override("panel", UiKit.box(UiKit.PANEL, UiKit.GREEN_DIM, 10))
 	v.add_child(p)
 	_scroll = ScrollContainer.new()
 	_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	p.add_child(_scroll)
+	v.add_child(UiKit.spacer(12))
 	var bottom := HBoxContainer.new()
-	bottom.add_theme_constant_override("separation", 12)
+	bottom.add_theme_constant_override("separation", 16)
 	v.add_child(bottom)
-	bottom.add_child(UiKit.button("> BACK", _close, 26))
-	_status = UiKit.text("", 14, UiKit.GREEN_DIM)
+	var back := UiKit.button("Back", _close, 17)
+	back.custom_minimum_size.x = 110
+	bottom.add_child(back)
+	_status = UiKit.strong("", 15, UiKit.MUTED)
 	_status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_status.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -103,29 +102,30 @@ func _build_plate() -> void:
 	m.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 	m.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	m.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	m.add_theme_constant_override("margin_right", 30)
-	m.add_theme_constant_override("margin_bottom", 22)
+	m.add_theme_constant_override("margin_right", 32)
+	m.add_theme_constant_override("margin_bottom", 26)
 	m.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(m)
+	var p := UiKit.panel(16)
+	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	p.custom_minimum_size = Vector2(320, 0)
+	m.add_child(p)
 	var v := VBoxContainer.new()
-	v.alignment = BoxContainer.ALIGNMENT_END
-	v.add_theme_constant_override("separation", 0)
-	v.custom_minimum_size = Vector2(400, 0)
-	m.add_child(v)
-	_plate_name = UiKit.heading("", 40, UiKit.GREEN)
-	_plate_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	v.add_theme_constant_override("separation", 2)
+	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	p.add_child(v)
+	v.add_child(UiKit.label("Subject on file", 12, UiKit.FAINT))
+	_plate_name = UiKit.heading("", 38)
+	_plate_name.clip_text = true
 	v.add_child(_plate_name)
-	_plate_title = UiKit.text("", 20, UiKit.GREEN)
-	_plate_title.add_theme_color_override("font_outline_color", Color.BLACK)
-	_plate_title.add_theme_constant_override("outline_size", 6)
-	_plate_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_plate_title = UiKit.strong("", 16)
 	v.add_child(_plate_title)
-	_plate_items = UiKit.text("", 14, UiKit.GREEN)
-	_plate_items.add_theme_color_override("font_outline_color", Color.BLACK)
-	_plate_items.add_theme_constant_override("outline_size", 6)
-	_plate_items.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	v.add_child(UiKit.spacer(6))
+	_plate_items = UiKit.text("", 14, UiKit.MUTED)
 	_plate_items.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_plate_items.custom_minimum_size = Vector2(288, 0)
 	v.add_child(_plate_items)
+	UiKit.fade_in(m, 0.3)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
@@ -138,12 +138,27 @@ func _close() -> void:
 func select_tab(t: String) -> void:
 	tab = t
 	for k in _tab_buttons:
-		var b: Button = _tab_buttons[k]
-		var on: bool = k == t
-		b.add_theme_stylebox_override("normal", UiKit.box(UiKit.AMBER if on else Color(0, 0, 0, 0.55), UiKit.AMBER if on else UiKit.GREEN_DIM))
-		b.add_theme_color_override("font_color", UiKit.INK if on else UiKit.GREEN)
-		b.add_theme_color_override("font_focus_color", UiKit.INK if on else UiKit.GREEN)
+		_style_tab(_tab_buttons[k], k == t)
 	_rebuild()
+
+func _style_tab(b: Button, on: bool) -> void:
+	var s := StyleBoxFlat.new()
+	s.bg_color = Color(0, 0, 0, 0)
+	s.border_color = UiKit.ACCENT if on else Color(0, 0, 0, 0)
+	s.border_width_bottom = 3
+	s.content_margin_left = 10
+	s.content_margin_right = 10
+	var h := s.duplicate() as StyleBoxFlat
+	if not on:
+		h.border_color = UiKit.LINE_STRONG
+	for st in ["normal", "pressed", "hover_pressed", "disabled"]:
+		b.add_theme_stylebox_override(st, s)
+	b.add_theme_stylebox_override("hover", h)
+	var fg := Color.WHITE if on else UiKit.MUTED
+	b.add_theme_color_override("font_color", fg)
+	b.add_theme_color_override("font_pressed_color", fg)
+	b.add_theme_color_override("font_hover_color", Color.WHITE)
+	b.add_theme_color_override("font_focus_color", Color.WHITE)
 
 func _rebuild() -> void:
 	if _list:
@@ -156,7 +171,7 @@ func _rebuild() -> void:
 		if Profile.is_unlocked(it.id):
 			have += 1
 	var done := Profile.CHALLENGES.filter(func(c): return Profile.is_done(c)).size()
-	_count.text = "%d / %d ITEMS · %d / %d CHALLENGES" % [have, total, done, Profile.CHALLENGES.size()]
+	_count.text = ("%d / %d items   %d / %d challenges" % [have, total, done, Profile.CHALLENGES.size()]).to_upper()
 	if tab == "challenges":
 		_build_challenges()
 	else:
@@ -166,8 +181,9 @@ func _rebuild() -> void:
 func _build_items() -> void:
 	var grid := GridContainer.new()
 	grid.columns = 3
-	grid.add_theme_constant_override("h_separation", 8)
-	grid.add_theme_constant_override("v_separation", 8)
+	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 10)
 	_scroll.add_child(grid)
 	_list = grid
 	var items := Profile.items_in(tab)
@@ -175,78 +191,95 @@ func _build_items() -> void:
 	var locked := items.filter(func(it): return not Profile.is_unlocked(it.id))
 	unlocked.sort_custom(func(a, b): return a.r < b.r)
 	locked.sort_custom(func(a, b): return a.r < b.r)
+	var i := 0
 	for it in unlocked + locked:
-		grid.add_child(_card(it))
+		var c := _card(it)
+		grid.add_child(c)
+		if i < 12:
+			UiKit.fade_in(c, 0.025 * i, 0.22)
+		i += 1
 
 func _card(it: Dictionary) -> Button:
 	var unlocked: bool = Profile.is_unlocked(it.id)
 	var worn: bool = Profile.equipped(it.cat) == it.id
 	var col: Color = Profile.rarity_color(it.r)
 	var b := Button.new()
-	b.custom_minimum_size = Vector2(CARD_W, 104)
-	b.focus_mode = Control.FOCUS_NONE
-	var bg := Color(0.03, 0.07, 0.045, 0.92) if unlocked else Color(0.01, 0.015, 0.012, 0.92)
-	var edge := UiKit.AMBER if worn else (col if unlocked else col.darkened(0.6))
+	b.custom_minimum_size = Vector2(CARD_W, 112)
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	var bg := Color(0.11, 0.1, 0.09, 0.9).lerp(col, 0.07) if unlocked else Color(0.06, 0.055, 0.05, 0.82)
+	var edge := UiKit.ACCENT if worn else (Color(col, 0.38) if unlocked else Color(1, 1, 1, 0.05))
 	var normal := UiKit.box(bg, edge, 8)
-	normal.border_width_left = 5
 	if worn:
 		normal.set_border_width_all(2)
-		normal.border_width_left = 5
-	var hover := UiKit.box(bg.lightened(0.06), col.lightened(0.2), 8)
-	hover.set_border_width_all(2)
-	hover.border_width_left = 5
-	for st in ["normal", "focus", "disabled"]:
+	var hover := UiKit.box(bg.lightened(0.05), UiKit.ACCENT if worn else Color(col, 0.75) if unlocked else Color(1, 1, 1, 0.14), 8)
+	hover.set_border_width_all(2 if worn else 1)
+	for st in ["normal", "disabled"]:
 		b.add_theme_stylebox_override(st, normal)
-	b.add_theme_stylebox_override("hover", hover)
-	b.add_theme_stylebox_override("pressed", hover)
+	for st in ["hover", "pressed", "hover_pressed"]:
+		b.add_theme_stylebox_override(st, hover)
+	UiKit.hover_lift(b, 1.03)
 	var mc := MarginContainer.new()
 	mc.set_anchors_preset(Control.PRESET_FULL_RECT)
 	mc.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	mc.add_theme_constant_override("margin_left", 12)
-	mc.add_theme_constant_override("margin_right", 8)
-	mc.add_theme_constant_override("margin_top", 6)
-	mc.add_theme_constant_override("margin_bottom", 6)
+	mc.add_theme_constant_override("margin_left", 14)
+	mc.add_theme_constant_override("margin_right", 12)
+	mc.add_theme_constant_override("margin_top", 10)
+	mc.add_theme_constant_override("margin_bottom", 10)
 	b.add_child(mc)
 	var v := VBoxContainer.new()
 	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	v.add_theme_constant_override("separation", 0)
+	v.add_theme_constant_override("separation", 2)
 	mc.add_child(v)
 	var top := HBoxContainer.new()
 	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	top.add_theme_constant_override("separation", 6)
+	top.add_theme_constant_override("separation", 7)
 	v.add_child(top)
 	var sw := _swatch(it)
 	if sw:
 		sw.modulate.a = 1.0 if unlocked else 0.35
 		top.add_child(sw)
-	var rl := UiKit.text(Profile.rarity_name(it.r), 12, col if unlocked else col.darkened(0.45))
+	var rl := UiKit.label(Profile.rarity_name(it.r), 12, col if unlocked else col.darkened(0.45))
 	rl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	top.add_child(rl)
+	top.add_child(UiKit.flex())
 	if worn:
-		var spacer := Control.new()
-		spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		top.add_child(spacer)
-		top.add_child(UiKit.text("WORN", 12, UiKit.AMBER))
-	var nm := UiKit.heading(it.name, 25, col.lightened(0.1) if unlocked else Color(0.36, 0.4, 0.37))
+		top.add_child(UiKit.pill("Worn", UiKit.ACCENT, true, 11))
+	elif not unlocked:
+		top.add_child(UiKit.label("Locked", 11, UiKit.FAINT))
+	var nm := UiKit.strong(it.name, 18, UiKit.TEXT if unlocked else UiKit.FAINT.lightened(0.1))
 	nm.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	nm.clip_text = true
-	nm.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0))
-	nm.custom_minimum_size = Vector2(CARD_W - 24, 0)
+	nm.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	nm.custom_minimum_size = Vector2(CARD_W - 30, 0)
 	v.add_child(nm)
-	var sub := UiKit.text("", 12, UiKit.GREEN_DIM)
-	sub.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	sub.custom_minimum_size = Vector2(CARD_W - 24, 0)
+	v.add_child(UiKit.flex())
 	if not unlocked:
 		var c := Profile.challenge_for(it.id)
-		sub.text = "LOCKED · %s · %d/%d" % [c.get("text", "?"), Profile.progress(c) if not c.is_empty() else 0, c.get("goal", 0)]
-		sub.add_theme_color_override("font_color", Color(0.55, 0.5, 0.42))
-	elif worn:
-		sub.text = "equipped" if it.cat != "death_fx" else "equipped · click to replay"
+		var sub := UiKit.text(str(c.get("text", "Not available yet")), 13, UiKit.MUTED)
+		sub.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		sub.clip_text = true
+		sub.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		sub.custom_minimum_size = Vector2(CARD_W - 30, 0)
+		sub.tooltip_text = str(c.get("text", ""))
+		v.add_child(sub)
+		if not c.is_empty():
+			var row := HBoxContainer.new()
+			row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			row.add_theme_constant_override("separation", 8)
+			var br := UiKit.bar(float(Profile.progress(c)), float(c.get("goal", 1)), col.darkened(0.1), 60, 4)
+			br.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			row.add_child(br)
+			row.add_child(UiKit.label("%d/%d" % [Profile.progress(c), c.get("goal", 0)], 11, UiKit.FAINT))
+			v.add_child(row)
+		b.tooltip_text = Profile.requirement_text(it.id)
 	else:
-		sub.text = "click to equip"
-	v.add_child(sub)
+		var hint := "Equipped" if worn else "Click to equip"
+		if worn and it.cat == "death_fx":
+			hint = "Equipped. Click to replay"
+		v.add_child(UiKit.text(hint, 13, UiKit.ACCENT if worn else UiKit.FAINT.lightened(0.15)))
+	if unlocked:
+		b.tooltip_text = it.name
 	b.pressed.connect(_on_card.bind(it.id))
 	return b
 
@@ -261,18 +294,13 @@ func _swatch(it: Dictionary) -> Control:
 			c = {0: Color("6a6f7c"), 1: Color("e0b818"), 2: Color("4a5a2a"), 3: Color("7a3a14"), 4: Color("6a0008"), 5: Color("2a2418"), 6: Color("4fd13a"), 7: Color("c8ccd4"), 8: Color("ffbf2e"), 9: Color("d8d4c4")}.get(it.v, Color.GRAY)
 	if c == null:
 		return null
-	var r := ColorRect.new()
-	r.color = c
-	r.custom_minimum_size = Vector2(14, 14)
-	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	return r
+	return UiKit.chip(c, 12, 12)
 
 func _on_card(id: String) -> void:
-	var it := Profile.item(id)
 	if not Profile.is_unlocked(id):
 		Fx.sfx("buzzer", null, -14.0, 1.5)
-		_status.text = "LOCKED: " + Profile.requirement_text(id)
-		_status.add_theme_color_override("font_color", UiKit.RED)
+		_status.text = "Locked. " + Profile.requirement_text(id)
+		_status.add_theme_color_override("font_color", UiKit.DANGER.lightened(0.2))
 		return
 	equip(id)
 
@@ -280,7 +308,7 @@ func equip(id: String) -> void:
 	var it := Profile.item(id)
 	if not Profile.equip(id):
 		return
-	_status.text = "EQUIPPED · %s · %s" % [Profile.rarity_name(it.r), it.name]
+	_status.text = "Equipped %s (%s)" % [it.name, Profile.rarity_name(it.r).capitalize()]
 	_status.add_theme_color_override("font_color", Profile.rarity_color(it.r))
 	var sy := _scroll.scroll_vertical
 	_rebuild()
@@ -311,17 +339,17 @@ func _refresh_plate() -> void:
 	_plate_name.text = NetworkManager.local_name.to_upper()
 	var title_id := Profile.equipped("title")
 	var ti := Profile.item(title_id)
-	_plate_title.text = "«%s»" % look.title if look.title != "" else ""
-	_plate_title.add_theme_color_override("font_color", Profile.rarity_color(ti.get("r", 0)))
+	_plate_title.text = str(look.title) if str(look.title) != "" else "No title"
+	_plate_title.add_theme_color_override("font_color", Profile.rarity_color(ti.get("r", 0)) if str(look.title) != "" else UiKit.FAINT)
 	var parts: Array[String] = []
 	for cat in ["suit", "pattern", "hair", "hat", "death_fx"]:
-		parts.append(Profile.item(Profile.equipped(cat)).get("name", ""))
-	_plate_items.text = " · ".join(parts)
+		parts.append(str(Profile.item(Profile.equipped(cat)).get("name", "")))
+	_plate_items.text = ",  ".join(parts)
 
 func _build_challenges() -> void:
 	var v := VBoxContainer.new()
 	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	v.add_theme_constant_override("separation", 5)
+	v.add_theme_constant_override("separation", 6)
 	_scroll.add_child(v)
 	_list = v
 	var rows: Array = Profile.CHALLENGES.duplicate()
@@ -331,8 +359,13 @@ func _build_challenges() -> void:
 		if da != db:
 			return db
 		return float(Profile.progress(a)) / float(a.goal) > float(Profile.progress(b)) / float(b.goal))
+	var i := 0
 	for c in rows:
-		v.add_child(_challenge_row(c))
+		var r := _challenge_row(c)
+		v.add_child(r)
+		if i < 10:
+			UiKit.fade_in(r, 0.025 * i, 0.22)
+		i += 1
 
 func _challenge_row(c: Dictionary) -> Control:
 	var done := Profile.is_done(c)
@@ -340,41 +373,39 @@ func _challenge_row(c: Dictionary) -> Control:
 	var col := Profile.rarity_color(it.get("r", 0))
 	var p := PanelContainer.new()
 	p.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var sb := UiKit.box(Color(0.03, 0.07, 0.045, 0.9) if done else Color(0.015, 0.03, 0.02, 0.9), col if done else UiKit.GREEN_DIM.darkened(0.3), 8)
-	sb.border_width_left = 4
-	sb.border_color = col
+	var sb := UiKit.box(Color(0.11, 0.1, 0.09, 0.85).lerp(col, 0.06) if done else Color(1, 0.95, 0.88, 0.035), Color(col, 0.35) if done else Color(1, 1, 1, 0.04), 14)
+	sb.content_margin_top = 10
+	sb.content_margin_bottom = 10
 	p.add_theme_stylebox_override("panel", sb)
 	var h := HBoxContainer.new()
-	h.add_theme_constant_override("separation", 10)
+	h.add_theme_constant_override("separation", 16)
 	p.add_child(h)
 	var left := VBoxContainer.new()
 	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	left.add_theme_constant_override("separation", 0)
+	left.add_theme_constant_override("separation", 4)
 	h.add_child(left)
-	var t := UiKit.text(c.text, 15, UiKit.AMBER if done else UiKit.GREEN)
+	var t := UiKit.strong(c.text, 16, UiKit.TEXT if not done else UiKit.TEXT.darkened(0.1))
 	t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	left.add_child(t)
-	left.add_child(UiKit.text("REWARD · %s · %s · %s" % [Profile.rarity_name(it.get("r", 0)), Profile.CATEGORY_NAMES.get(it.get("cat", ""), ""), it.get("name", "?")], 12, col))
+	var rw := HBoxContainer.new()
+	rw.add_theme_constant_override("separation", 8)
+	rw.add_child(UiKit.pill(Profile.rarity_name(it.get("r", 0)), col, false, 11))
+	var rn := UiKit.text("%s  %s" % [str(Profile.CATEGORY_NAMES.get(it.get("cat", ""), "")).capitalize(), it.get("name", "?")], 13, UiKit.MUTED)
+	rn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	rw.add_child(rn)
+	left.add_child(rw)
 	var right := VBoxContainer.new()
-	right.custom_minimum_size = Vector2(150, 0)
+	right.custom_minimum_size = Vector2(140, 0)
 	right.alignment = BoxContainer.ALIGNMENT_CENTER
-	right.add_theme_constant_override("separation", 2)
+	right.add_theme_constant_override("separation", 6)
 	h.add_child(right)
-	var pt := UiKit.text("DONE" if done else "%d / %d" % [Profile.progress(c), c.goal], 14, UiKit.AMBER if done else UiKit.GREEN_DIM)
-	pt.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	right.add_child(pt)
-	var bar := ProgressBar.new()
-	bar.show_percentage = false
-	bar.custom_minimum_size = Vector2(150, 8)
-	bar.max_value = float(c.goal)
-	bar.value = float(Profile.progress(c))
-	var bg := StyleBoxFlat.new()
-	bg.bg_color = Color(0.0, 0.0, 0.0, 0.7)
-	bg.border_color = UiKit.GREEN_DIM.darkened(0.3)
-	bg.set_border_width_all(1)
-	var fill := StyleBoxFlat.new()
-	fill.bg_color = col if done else UiKit.GREEN
-	bar.add_theme_stylebox_override("background", bg)
-	bar.add_theme_stylebox_override("fill", fill)
-	right.add_child(bar)
+	if done:
+		var dp := UiKit.pill("Done", col, true, 12)
+		dp.size_flags_horizontal = Control.SIZE_SHRINK_END
+		right.add_child(dp)
+	else:
+		var pt := UiKit.label("%d / %d" % [Profile.progress(c), c.goal], 14, UiKit.MUTED)
+		pt.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		right.add_child(pt)
+		right.add_child(UiKit.bar(float(Profile.progress(c)), float(c.goal), UiKit.ACCENT, 140, 6))
 	return p

@@ -14,6 +14,7 @@ func make_ui_layer() -> Control:
 	var c := Control.new()
 	c.set_anchors_preset(Control.PRESET_FULL_RECT)
 	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	c.theme = UiKit.hud_theme()
 	layer.add_child(c)
 	return c
 

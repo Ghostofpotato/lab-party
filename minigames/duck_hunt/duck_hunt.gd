@@ -18,11 +18,11 @@ const RUN_SPEED: float = 4.3
 const SPRINT_SPEED: float = 7.0
 const LIMP: float = 0.62
 const STAMINA_MAX: float = 2.6
-const TOWERS := [Vector3(-1.2, 0.0, -1.4), Vector3(17.2, 0.0, 11.4)]
+var TOWERS: Array = [Vector3(-1.2, 0.0, -1.4), Vector3(17.2, 0.0, 11.4)]
 const PLATFORM_Y: float = 4.0
 const CRATES := Vector3(8.2, 0.0, 1.4)
-const FUSEBOX := Vector3(8.0, 0.0, 4.6)
-const LIFTS := [Vector3(0.8, 0.0, 0.8), Vector3(15.2, 0.0, 9.2)]
+var FUSEBOX := Vector3(8.0, 0.0, 4.6)
+var LIFTS: Array = [Vector3(0.8, 0.0, 0.8), Vector3(15.2, 0.0, 9.2)]
 const FUSES: int = 3
 const CARRY_SLOW: float = 0.85
 const BOX_HOLD: float = 1.0
@@ -32,9 +32,22 @@ const RELOCATE_AT := [20.0, 35.0]
 const CAMP_RADIUS: float = 2.0
 const SPOT_TIME: float = 5.0
 const SHOCK_TIME: float = 8.0
+const MAP_COUNT: int = 8
+const MAPS := [null,
+	preload("res://minigames/duck_hunt/dh_map_asylum.gd"),
+	preload("res://minigames/duck_hunt/dh_map_toys.gd"),
+	preload("res://minigames/duck_hunt/dh_map_rig.gd"),
+	preload("res://minigames/duck_hunt/dh_map_castle.gd"),
+	preload("res://minigames/duck_hunt/dh_map_swamp.gd"),
+	preload("res://minigames/duck_hunt/dh_map_mall.gd"),
+	preload("res://minigames/duck_hunt/dh_map_medina.gd")]
 
 static var _hunted: Array = []
 
+var map_id: int = 0
+var map_name: String = "THE SCRAPYARD"
+var _skin: Dictionary = {}
+var _map_label: Label
 var hunter: int = 0
 var _tower: int = 0
 var _eye := Vector3.ZERO
@@ -120,8 +133,23 @@ var _fence_post: Node3D
 
 func begin() -> void:
 	setup_arena(false)
-	_night()
-	_build_yard()
+	map_id = _choose_map()
+	if map_id == 0:
+		_night()
+		_build_yard()
+	else:
+		var m = MAPS[map_id]
+		var lay: Dictionary = m.layout()
+		map_name = lay.name
+		TOWERS = lay.towers
+		LIFTS = lay.lifts
+		FUSEBOX = lay.fusebox
+		_skin = lay.get("skin", {})
+		m.build(self)
+	_build_fusebox()
+	for i in LIFTS.size():
+		_build_lift(i)
+	_refresh_lifts()
 	for i in TOWERS.size():
 		_build_tower(i)
 	_eye = _eyes[0]
@@ -131,8 +159,9 @@ func begin() -> void:
 		players[id].speed = RUN_SPEED
 		players[id].bot_brain = _bot_brain.bind(id)
 		_hits[id] = 0
-	hud_title("DUCK HUNT  ·  stay out of the laser")
+	hud_title("DUCK HUNT  ·  %s  ·  stay out of the laser" % map_name)
 	_build_hud()
+	_show_map_name()
 	_runner_cam(W * 0.5)
 	if NetworkManager.is_server():
 		_run.call_deferred()
@@ -140,10 +169,217 @@ func begin() -> void:
 func _exit_tree() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
+func _choose_map() -> int:
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--map="):
+			return posmod(int(a.substr(6)), MAP_COUNT)
+	var e := OS.get_environment("LP_MAP")
+	if e != "":
+		return posmod(int(e), MAP_COUNT)
+	return posmod(Globals.round_seed, MAP_COUNT)
+
+func _show_map_name() -> void:
+	_map_label = _label(Vector2.ZERO, 46, Color("ffe2a0"))
+	_map_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_pin(_map_label, Vector2(0.5, 0.0), Rect2(-500, 150, 1000, 60))
+	_map_label.text = map_name
+	var tw := _map_label.create_tween()
+	tw.tween_interval(3.5)
+	tw.tween_property(_map_label, "modulate:a", 0.0, 1.0)
+	tw.tween_callback(_map_label.hide)
+
 func _spawns() -> Array:
+	if map_id != 0:
+		return _auto_spawns()
 	var pts := [Vector3(1.8, 0, 5.6), Vector3(6.6, 0, 5.4), Vector3(11.4, 0, 3.6), Vector3(15.0, 0, 3.8),
 		Vector3(6.0, 0, 7.0), Vector3(8.6, 0, 9.4), Vector3(12.0, 0, 9.6), Vector3(2.2, 0, 0.7)]
 	return pts
+
+func _auto_spawns() -> Array:
+	var cands: Array = []
+	var x := 1.0
+	while x < W - 0.9:
+		var z := 1.0
+		while z < D - 0.9:
+			var pt := Vector3(x, 0, z)
+			var ok := pt.distance_to(FUSEBOX) > 4.5
+			for lp in LIFTS:
+				if pt.distance_to(lp) < 1.8:
+					ok = false
+			for sd in _solids:
+				if _inside(pt, sd, 0.6):
+					ok = false
+			if ok:
+				cands.append(pt)
+			z += 0.7
+		x += 0.7
+	var out: Array = []
+	var best := Vector3(W * 0.5, 0, D * 0.5)
+	var bd := INF
+	for c in cands:
+		if (c as Vector3).distance_to(Vector3(W * 0.5, 0, D * 0.5)) < bd:
+			bd = (c as Vector3).distance_to(Vector3(W * 0.5, 0, D * 0.5))
+			best = c
+	if not cands.is_empty():
+		out.append(best)
+	while out.size() < 8 and out.size() < cands.size():
+		var far := Vector3.ZERO
+		var fd := -1.0
+		for c in cands:
+			var md := INF
+			for o in out:
+				md = minf(md, (c as Vector3).distance_to(o))
+			if md > fd:
+				fd = md
+				far = c
+		out.append(far)
+	while out.size() < 8:
+		out.append(Vector3(2.0 + out.size() * 1.6, 0, D * 0.5))
+	return out
+
+func set_env(d: Dictionary) -> void:
+	env.background_color = d.get("bg", Color("05060a"))
+	env.ambient_light_color = d.get("amb", Color(0.42, 0.48, 0.62))
+	env.ambient_light_energy = d.get("amb_e", 0.6)
+	env.fog_light_color = d.get("fog", Color(0.07, 0.08, 0.11))
+	env.fog_density = d.get("fog_d", 0.03)
+	env.adjustment_saturation = d.get("sat", 0.75)
+	env.tonemap_exposure = d.get("exp", 1.2)
+	if d.has("sky"):
+		var sk: Array = d.sky
+		var psm := ProceduralSkyMaterial.new()
+		psm.sky_top_color = sk[0]
+		psm.sky_horizon_color = sk[1]
+		psm.ground_horizon_color = sk[1].darkened(0.3)
+		psm.ground_bottom_color = sk[2]
+		psm.sun_angle_max = 8.0
+		var sky := Sky.new()
+		sky.sky_material = psm
+		env.sky = sky
+		env.background_mode = Environment.BG_SKY
+	for c in world.get_children():
+		if c is DirectionalLight3D:
+			var dl: DirectionalLight3D = c
+			dl.light_color = d.get("sun", Color(0.62, 0.72, 1.0))
+			dl.light_energy = d.get("sun_e", 0.3)
+			dl.rotation_degrees = d.get("sun_rot", Vector3(-50.0, 150.0, 0.0))
+
+func block(size: Vector3, base: Vector3, m: Material, yaw: float = 0.0, solid: bool = true) -> MeshInstance3D:
+	var c := base + Vector3(0, size.y * 0.5, 0)
+	var b := box(size, c, m, null, solid)
+	b.rotation_degrees.y = yaw
+	if solid:
+		_solids.append({"c": c, "s": size, "yaw": yaw})
+	return b
+
+func fit(id: String, pos: Vector3, yaw: float, h: float, solid: bool = false, parent: Node = null, tilt: Vector3 = Vector3.ZERO) -> Node3D:
+	var holder := Node3D.new()
+	(parent if parent else world).add_child(holder)
+	holder.position = pos
+	holder.rotation_degrees.y = yaw
+	var inner := Node3D.new()
+	holder.add_child(inner)
+	inner.rotation_degrees = tilt
+	var n := prop(id, Vector3.ZERO, 0.0, 1.0, inner)
+	if not n:
+		holder.queue_free()
+		return null
+	var bb := _bounds(holder, Transform3D.IDENTITY)
+	if bb.size.y < 0.001:
+		return holder
+	var s := h / bb.size.y
+	inner.scale = Vector3.ONE * s
+	holder.position.y = pos.y - bb.position.y * s
+	if solid:
+		var c := Vector3(bb.position.x + bb.size.x * 0.5, 0, bb.position.z + bb.size.z * 0.5) * s
+		_solid(Vector3(pos.x, 0, pos.z) + c.rotated(Vector3.UP, deg_to_rad(yaw)) + Vector3(0, pos.y + h * 0.5, 0), Vector3(bb.size.x * s * 0.85, h, bb.size.z * s * 0.85), yaw)
+	return holder
+
+func dead_tree(pos: Vector3, yaw: float, h: float) -> Node3D:
+	return fit("dead_tree_trunk", pos, yaw, h, false, null, Vector3(0, 0, 90))
+
+func omni(pos: Vector3, col: Color, energy: float, rng: float, shadow: bool = false) -> OmniLight3D:
+	var l := OmniLight3D.new()
+	l.light_color = col
+	l.light_energy = energy
+	l.omni_range = rng
+	l.shadow_enabled = shadow
+	world.add_child(l)
+	l.position = pos
+	return l
+
+func glow(c: Color, e: float) -> StandardMaterial3D:
+	return _glow_mat(c, e)
+
+func dull(tex: String, tile: float, tint: Color) -> StandardMaterial3D:
+	return _dull(tex, tile, tint)
+
+func flame(pos: Vector3, size: float) -> void:
+	var cols := [Color(0.9, 0.22, 0.03), Color(1.0, 0.45, 0.08), Color(1.0, 0.7, 0.25)]
+	for k in 3:
+		var mi := MeshInstance3D.new()
+		var cm := CylinderMesh.new()
+		cm.top_radius = 0.0
+		cm.bottom_radius = size * (0.32 - k * 0.08)
+		cm.height = size * (1.4 - k * 0.3)
+		mi.mesh = cm
+		mi.material_override = _glow_mat(cols[k], 2.5 + k * 1.0)
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		world.add_child(mi)
+		mi.position = pos + Vector3(0, cm.height * 0.5, 0)
+		var tw := mi.create_tween().set_loops()
+		tw.tween_property(mi, "scale", Vector3(1.0, 1.2, 1.0), 0.11 + k * 0.03)
+		tw.tween_property(mi, "scale", Vector3(0.9, 0.85, 0.9), 0.13)
+
+func cyl(r: float, h: float, pos: Vector3, m: Material, parent: Node = null) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = r
+	cm.bottom_radius = r
+	cm.height = h
+	mi.mesh = cm
+	mi.material_override = m
+	(parent if parent else world).add_child(mi)
+	mi.position = pos
+	return mi
+
+func sign3d(text: String, pos: Vector3, col: Color, size: int = 64, yaw: float = 0.0) -> Label3D:
+	var lb := Label3D.new()
+	lb.text = text
+	lb.font_size = size
+	lb.pixel_size = 0.01
+	lb.outline_size = 10
+	lb.modulate = col
+	world.add_child(lb)
+	lb.position = pos
+	lb.rotation_degrees.y = yaw
+	return lb
+
+func flicker(l: Light3D, base: float, seed_i: int) -> void:
+	var tw := l.create_tween().set_loops()
+	var r := RandomNumberGenerator.new()
+	r.seed = seed_i
+	for k in 6:
+		tw.tween_property(l, "light_energy", base * r.randf_range(0.0, 0.4), 0.05)
+		tw.tween_property(l, "light_energy", base, 0.05)
+		tw.tween_interval(r.randf_range(0.4, 2.5))
+
+func solid(center: Vector3, size: Vector3, yaw_deg: float = 0.0) -> void:
+	_solid(center, size, yaw_deg)
+
+func container(base: Vector3, size: Vector3, tint: Color) -> void:
+	_container(base, size, tint)
+
+func security_light(base: Vector3, side: float) -> void:
+	_security_light(base, side)
+
+func sconce(pos: Vector3, yaw: float) -> void:
+	_sconce(pos, yaw)
+
+func fence_line(a: Vector3, b: Vector3) -> void:
+	if not _fence_panel:
+		_fence_parts()
+	_fence_line(a, b)
 
 func _night() -> void:
 	env.background_color = Color("05060a")
@@ -221,10 +457,6 @@ func _build_yard() -> void:
 	prop("plastic_crate_01", Vector3(10.8, 0, 6.1), 30.0)
 	prop("old_tyre", Vector3(6.3, 0.3, 4.6), 70.0)
 	prop("can_rusted", Vector3(6.6, 0, 3.9), 0.0)
-	_build_fusebox()
-	for i in LIFTS.size():
-		_build_lift(i)
-	_refresh_lifts()
 	for n in [Vector3(0.6, 0, 4.2), Vector3(6.2, 0, 2.2), Vector3(15.6, 0, 5.0), Vector3(10.4, 0, 0.6), Vector3(3.0, 0, 0.4)]:
 		prop("nettle_plant", n, randf() * 360.0, 1.6)
 	_fence_parts()
@@ -324,7 +556,7 @@ func _build_lift(i: int) -> void:
 	_lift_cars.append(car)
 	var lamp := MeshInstance3D.new()
 	var lm := BoxMesh.new()
-	lm.size = Vector3(0.3, 0.2, 0.3)
+	lm.size = Vector3(0.16, 0.12, 0.16)
 	lamp.mesh = lm
 	lamp.material_override = _glow_mat(Color(0.6, 0.05, 0.03), 1.0)
 	world.add_child(lamp)
@@ -524,7 +756,7 @@ func _build_tower(idx: int) -> void:
 	pivot.rotation.y = yaw
 	_tower_yaws.append(yaw)
 	_eyes.append(base + Vector3(0, PLATFORM_Y + 1.62, 1.15).rotated(Vector3.UP, yaw))
-	var leg_m := _dull("rusty_metal_02", 1.0, Color(0.9, 0.85, 0.8))
+	var leg_m := _skin_mat("leg", "rusty_metal_02", 1.0, Color(0.9, 0.85, 0.8), true)
 	var h := PLATFORM_Y
 	for cx in [-1.2, 1.2]:
 		for cz in [-1.2, 1.2]:
@@ -538,15 +770,15 @@ func _build_tower(idx: int) -> void:
 	for k in 2:
 		var br := box(Vector3(0.08, 3.0, 0.08), Vector3(0, 2.0, -1.2 + k * 2.4), leg_m, pivot)
 		br.rotation_degrees.z = 52.0 if k == 0 else -52.0
-	box(Vector3(3.0, 0.16, 3.0), Vector3(0, h, 0), mat("black_painted_planks", 0.9, Color(0.6, 0.52, 0.42)), pivot)
-	var wall_m := _dull("corrugated_iron", 0.7, Color(0.8, 0.78, 0.72))
+	box(Vector3(3.0, 0.16, 3.0), Vector3(0, h, 0), _skin_mat("floor", "black_painted_planks", 0.9, Color(0.6, 0.52, 0.42), false), pivot)
+	var wall_m := _skin_mat("wall", "corrugated_iron", 0.7, Color(0.8, 0.78, 0.72), true)
 	box(Vector3(3.0, 0.08, 0.08), Vector3(0, h + 0.95, 1.5), leg_m, pivot)
 	box(Vector3(3.0, 0.08, 0.08), Vector3(0, h + 0.5, 1.5), leg_m, pivot)
 	box(Vector3(3.0, 0.3, 0.04), Vector3(0, h + 0.15, 1.5), wall_m, pivot)
 	box(Vector3(0.06, 1.0, 3.0), Vector3(-1.5, h + 0.55, 0), wall_m, pivot)
 	box(Vector3(0.06, 1.0, 3.0), Vector3(1.5, h + 0.55, 0), wall_m, pivot)
 	box(Vector3(3.0, 1.0, 0.06), Vector3(0, h + 0.55, -1.5), wall_m, pivot)
-	var roof := box(Vector3(3.5, 0.06, 3.5), Vector3(0, h + 2.65, 0), mat("corrugated_iron", 0.8, Color(0.5, 0.45, 0.4)), pivot)
+	var roof := box(Vector3(3.5, 0.06, 3.5), Vector3(0, h + 2.65, 0), _skin_mat("roof", "corrugated_iron", 0.8, Color(0.5, 0.45, 0.4), false), pivot)
 	roof.rotation_degrees.x = -6.0
 	for k in 8:
 		box(Vector3(0.6, 0.05, 0.05), Vector3(0, 0.4 + k * 0.5, -1.35), leg_m, pivot)
@@ -558,6 +790,12 @@ func _build_tower(idx: int) -> void:
 	world.add_child(bulb)
 	bulb.position = base + Vector3(0, h + 2.3, 0)
 	prop("caged_hanging_light", Vector3(0, h + 2.55, 0), 0.0, 1.2, pivot)
+
+func _skin_mat(key: String, tex: String, tile: float, tint: Color, is_dull: bool) -> StandardMaterial3D:
+	if _skin.has(key):
+		var s: Array = _skin[key]
+		return _dull(s[0], tile, s[1])
+	return _dull(tex, tile, tint) if is_dull else mat(tex, tile, tint)
 
 func _build_laser() -> void:
 	var lm := StandardMaterial3D.new()

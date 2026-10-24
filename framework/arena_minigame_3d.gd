@@ -236,12 +236,47 @@ func local_player() -> LabPlayer3D:
 	return players.get(multiplayer.get_unique_id())
 
 func hud_title(text: String) -> Label:
+	var name_part := text
+	var rule_part := ""
+	for sep in ["  ·  ", " · ", " — ", " - "]:
+		if text.contains(sep):
+			name_part = text.get_slice(sep, 0)
+			rule_part = text.substr(name_part.length() + sep.length())
+			break
+	var p := PanelContainer.new()
+	var sb := UiKit.glass_box(0)
+	sb.bg_color = Color(UiKit.INK, 0.66)
+	sb.set_corner_radius_all(8)
+	sb.content_margin_left = 12
+	sb.content_margin_right = 14
+	sb.content_margin_top = 3
+	sb.content_margin_bottom = 3
+	p.add_theme_stylebox_override("panel", sb)
+	p.material = UiKit.glass_material()
+	p.position = Vector2(10, 6)
+	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 10)
+	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	p.add_child(h)
+	var mark := ColorRect.new()
+	mark.color = UiKit.ACCENT
+	mark.custom_minimum_size = Vector2(3, 16)
+	mark.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	h.add_child(mark)
 	var l := Label.new()
-	l.text = text
-	l.position = Vector2(16, 10)
-	l.add_theme_font_size_override("font_size", 22)
-	l.add_theme_color_override("font_color", Color("b8f5c4"))
-	l.add_theme_color_override("font_outline_color", Color.BLACK)
-	l.add_theme_constant_override("outline_size", 6)
-	hud.add_child(l)
+	l.text = name_part.to_upper()
+	l.add_theme_font_override("font", UiKit.display_font)
+	l.add_theme_font_size_override("font_size", 21)
+	l.add_theme_color_override("font_color", UiKit.TEXT)
+	h.add_child(l)
+	if rule_part != "":
+		var r := Label.new()
+		r.text = rule_part
+		r.add_theme_font_override("font", UiKit.strong_font)
+		r.add_theme_font_size_override("font_size", 14)
+		r.add_theme_color_override("font_color", UiKit.MUTED)
+		r.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		h.add_child(r)
+	hud.add_child(p)
 	return l

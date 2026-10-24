@@ -68,7 +68,7 @@ func _ready() -> void:
 	if title != "":
 		_title = Label3D.new()
 		_title.text = "«%s»" % title
-		_title.position = Vector3(0.0, HEIGHT + 0.36, 0.0)
+		_title.position = Vector3(0.0, -0.19, 0.0)
 		_title.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 		_title.no_depth_test = true
 		_title.fixed_size = true
@@ -76,7 +76,7 @@ func _ready() -> void:
 		_title.font_size = 17
 		_title.outline_size = 8
 		_title.modulate = Profile.rarity_color(int(info.get("title_rarity", 0))).lightened(0.15)
-		add_child(_title)
+		_label.add_child(_title)
 
 	set_multiplayer_authority(1 if is_bot else peer_id)
 	_target = position

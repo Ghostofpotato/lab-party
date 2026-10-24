@@ -60,24 +60,35 @@ func _save() -> void:
 
 func _apply_viewport() -> void:
 	var vp := get_viewport()
+	vp.use_debanding = level != Q.LOW
+	vp.mesh_lod_threshold = 0.0 if level == Q.HIGH else 0.6
 	match level:
 		Q.LOW:
 			vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR
-			vp.scaling_3d_scale = 0.5
-			vp.msaa_3d = Viewport.MSAA_DISABLED
-			vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED
-			RenderingServer.directional_shadow_atlas_set_size(1024, false)
-		Q.MEDIUM:
-			vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR
-			vp.scaling_3d_scale = 0.75
+			vp.scaling_3d_scale = 0.67
+			vp.fsr_sharpness = 0.12
 			vp.msaa_3d = Viewport.MSAA_DISABLED
 			vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA
-			RenderingServer.directional_shadow_atlas_set_size(2048, false)
+			RenderingServer.directional_shadow_atlas_set_size(1024, false)
+			RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_HARD)
+			RenderingServer.positional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_HARD)
+		Q.MEDIUM:
+			vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR
+			vp.scaling_3d_scale = 0.85
+			vp.fsr_sharpness = 0.18
+			vp.msaa_3d = Viewport.MSAA_2X
+			vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED
+			RenderingServer.directional_shadow_atlas_set_size(2048, true)
+			RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_LOW)
+			RenderingServer.positional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_LOW)
 		_:
 			vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
 			vp.scaling_3d_scale = 1.0
+			vp.msaa_3d = Viewport.MSAA_4X
 			vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA
 			RenderingServer.directional_shadow_atlas_set_size(4096, true)
+			RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_HIGH)
+			RenderingServer.positional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_MEDIUM)
 
 func _apply_tree(n: Node) -> void:
 	_on_node_added(n)
@@ -98,12 +109,19 @@ func _tune_light(l: Light3D) -> void:
 		return
 	if not l.has_meta("gfx_shadow"):
 		l.set_meta("gfx_shadow", l.shadow_enabled)
+		l.set_meta("gfx_ang", l.light_angular_distance)
 	var want: bool = l.get_meta("gfx_shadow")
 	if level == Q.LOW:
 		want = false
 	elif level == Q.MEDIUM and not (l is DirectionalLight3D):
 		want = false
 	l.shadow_enabled = want
+	l.shadow_normal_bias = maxf(l.shadow_normal_bias, 1.6)
+	l.shadow_blur = 1.4 if level == Q.HIGH else 1.0
+	if l is DirectionalLight3D and level == Q.HIGH:
+		l.light_angular_distance = maxf(l.light_angular_distance, 0.35)
+	elif l is DirectionalLight3D:
+		l.light_angular_distance = float(l.get_meta("gfx_ang"))
 
 func _tune_env(w: WorldEnvironment) -> void:
 	if not is_instance_valid(w) or w.environment == null:
@@ -113,7 +131,13 @@ func _tune_env(w: WorldEnvironment) -> void:
 		e.set_meta("gfx_orig", [e.ssao_enabled, e.ssil_enabled, e.glow_enabled, e.volumetric_fog_enabled, e.sdfgi_enabled, e.ssr_enabled])
 	var o: Array = e.get_meta("gfx_orig")
 	var hi := level == Q.HIGH
-	e.ssao_enabled = o[0] and hi
+	e.ssao_enabled = hi
+	if hi and not bool(o[0]):
+		e.ssao_radius = 0.9
+		e.ssao_intensity = 2.2
+		e.ssao_power = 1.6
+		e.ssao_detail = 0.6
+		e.ssao_light_affect = 0.25
 	e.ssil_enabled = o[1] and hi
 	e.glow_enabled = o[2] and level != Q.LOW
 	e.volumetric_fog_enabled = o[3] and hi

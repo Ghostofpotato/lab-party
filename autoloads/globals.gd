@@ -1,7 +1,10 @@
 extends Node
 ## Global config + version. Autoload singleton (see project.godot).
 
-const GAME_VERSION: String = "labparty-0.3.0"
+const GAME_VERSION: String = "labparty-0.4.0"
+
+## Same random number on every peer for the current round (map variants etc.).
+var round_seed: int = 0
 
 ## First player to reach this total wins the session.
 var target_score: int = 10

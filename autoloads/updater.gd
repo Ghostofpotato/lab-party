@@ -4,7 +4,7 @@ extends Node
 ## one from GitHub Releases, checks its SHA-256, swaps it in and restarts. Only active in exported builds
 ## (or with --updater-exe=<path> for testing). Publish with tools/push_update.sh.
 
-const BUILD: int = 3
+const BUILD: int = 4
 const MANIFEST_URL := "https://github.com/Ghostofpotato/lab-party/releases/latest/download/latest.json"
 
 var exe_path: String = ""
@@ -15,6 +15,8 @@ var _panel: PanelContainer
 var _title: Label
 var _info: Label
 var _button: Button
+var _kicker: Label
+var _bar: ProgressBar
 var _state: String = "idle"
 var _target: String = ""
 
@@ -50,28 +52,41 @@ func _build_ui() -> void:
 	var layer := CanvasLayer.new()
 	layer.layer = 120
 	add_child(layer)
-	_panel = UiKit.panel()
+	_panel = UiKit.panel(20)
 	_panel.theme = UiKit.theme()
 	_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	_panel.position = Vector2(-380, 24)
-	_panel.custom_minimum_size = Vector2(350, 0)
+	_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_panel.offset_left = -392
+	_panel.offset_right = -32
+	_panel.offset_top = 32
+	_panel.custom_minimum_size = Vector2(360, 0)
 	_panel.visible = false
 	layer.add_child(_panel)
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 6)
 	_panel.add_child(v)
-	_title = UiKit.heading("UPDATE AVAILABLE", 30, UiKit.AMBER)
+	_kicker = UiKit.label("Facility maintenance", 12, UiKit.ACCENT)
+	v.add_child(_kicker)
+	_title = UiKit.heading("Update available", 32)
 	v.add_child(_title)
-	_info = UiKit.text("", 14)
+	_info = UiKit.text("", 15, UiKit.MUTED)
 	_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_info.custom_minimum_size = Vector2(320, 0)
 	v.add_child(_info)
-	_button = UiKit.button("> UPDATE NOW", _on_button, 24)
+	_bar = UiKit.bar(0.0, 100.0, UiKit.ACCENT, 320, 6)
+	_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_bar.visible = false
+	v.add_child(_bar)
+	v.add_child(UiKit.spacer(6))
+	_button = UiKit.primary("Update now", _on_button, 18)
 	v.add_child(_button)
 
 func _refresh_visible() -> void:
 	if _panel:
+		var was := _panel.visible
 		_panel.visible = _state != "idle" and GameManager.screen == GameManager.Screen.MENU
+		if _panel.visible and not was:
+			UiKit.fade_in(_panel, 0.4)
 
 func _on_manifest(result: int, code: int, _h: PackedStringArray, body: PackedByteArray) -> void:
 	_http.request_completed.disconnect(_on_manifest)
@@ -105,6 +120,8 @@ func _download() -> void:
 	_target = exe_path + ".new"
 	_button.disabled = true
 	_title.text = "DOWNLOADING"
+	_bar.visible = true
+	_bar.value = 0.0
 	_http.timeout = 0.0
 	_http.download_file = _target
 	_http.download_chunk_size = 262144
@@ -117,7 +134,8 @@ func _process(_delta: float) -> void:
 	if _state == "downloading":
 		var total: int = maxi(int(_entry.get("size", 1)), 1)
 		var got: int = _http.get_downloaded_bytes()
-		_info.text = "%d / %d MB  ·  %d%%\nKeep the game open." % [got / 1048576, total / 1048576, got * 100 / total]
+		_info.text = "%d of %d MB  (%d%%)\nKeep the game open. Do not unplug the subject." % [got / 1048576, total / 1048576, got * 100 / total]
+		_bar.value = got * 100.0 / total
 
 func _on_downloaded(result: int, code: int, _h: PackedStringArray, _b: PackedByteArray) -> void:
 	_http.download_file = ""
@@ -140,8 +158,9 @@ func _on_downloaded(result: int, code: int, _h: PackedStringArray, _b: PackedByt
 	print("[LP] UPDATE installed build ", _manifest.get("build"))
 	_state = "ready"
 	_title.text = "UPDATE INSTALLED"
+	_bar.visible = false
 	_info.text = "v%s is ready. Restart to use it." % _manifest.get("version", "?")
-	_button.text = "> RESTART NOW"
+	_button.text = "RESTART NOW"
 	_button.disabled = false
 
 func _fail(why: String) -> void:
@@ -150,6 +169,8 @@ func _fail(why: String) -> void:
 		DirAccess.remove_absolute(_target)
 	_state = "failed"
 	_title.text = "UPDATE FAILED"
+	_title.add_theme_color_override("font_color", UiKit.DANGER.lightened(0.2))
+	_bar.visible = false
 	_info.text = why + ".\nTry again, or download the new version from your link."
-	_button.text = "> TRY AGAIN"
+	_button.text = "TRY AGAIN"
 	_button.disabled = false

@@ -142,7 +142,25 @@ func _apply_suit() -> void:
 			elif src is StandardMaterial3D and String(src.resource_name).begins_with("MI_Hair"):
 				var hm: StandardMaterial3D = src.duplicate()
 				hm.albedo_color = hair_color if hair_color.a > 0.5 else HAIR_COLORS[absi(hash(suit_color.to_html())) % HAIR_COLORS.size()]
+				_polish(hm, 0.55, 0.3, 0.45)
 				m.set_surface_override_material(s, hm)
+			elif src is StandardMaterial3D and String(src.resource_name).begins_with("MI_Eyes"):
+				var em: StandardMaterial3D = src.duplicate()
+				_polish(em, 0.12, 0.6, 0.0)
+				m.set_surface_override_material(s, em)
+			elif src is StandardMaterial3D:
+				var skin: StandardMaterial3D = src.duplicate()
+				_polish(skin, 0.62, 0.38, 0.5)
+				m.set_surface_override_material(s, skin)
+
+static func _polish(mat: StandardMaterial3D, min_rough: float, spec: float, rim: float) -> void:
+	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	mat.roughness = maxf(mat.roughness, min_rough)
+	mat.metallic_specular = spec
+	if rim > 0.0:
+		mat.rim_enabled = true
+		mat.rim = rim
+		mat.rim_tint = 0.5
 
 func set_suit_color(c: Color) -> void:
 	suit_color = c
@@ -168,6 +186,18 @@ func _attach_hat() -> void:
 	h.transform = head_rest.affine_inverse() * want
 	if HAT_TINTS.has(hat_tint):
 		_tint_hat(h, HAT_TINTS[hat_tint])
+	else:
+		_polish_hat(h)
+
+func _polish_hat(h: Node) -> void:
+	for mi in h.find_children("*", "MeshInstance3D", true, false):
+		var m: MeshInstance3D = mi
+		for s in m.mesh.get_surface_count():
+			var src := m.get_active_material(s)
+			if src is StandardMaterial3D:
+				var nm: StandardMaterial3D = src.duplicate()
+				_polish(nm, 0.45 if nm.metallic < 0.3 else 0.0, 0.5, 0.2 if nm.metallic < 0.3 else 0.0)
+				m.set_surface_override_material(s, nm)
 
 func _tint_hat(h: Node, c: Color) -> void:
 	for mi in h.find_children("*", "MeshInstance3D", true, false):
@@ -190,6 +220,7 @@ func _tint_hat(h: Node, c: Color) -> void:
 					nm.emission_energy_multiplier = 1.6
 				"blood":
 					nm.roughness = 0.25
+			_polish(nm, 0.0 if hat_tint in ["gold", "chrome"] else 0.5, 0.5, 0.0 if hat_tint in ["gold", "chrome"] else 0.2)
 			m.set_surface_override_material(s, nm)
 
 ## speed in m/s on the ground plane; picks idle / walk / jog / sprint.

@@ -38,6 +38,7 @@ const CROUCH_H: float = 1.0
 const RUN: int = 0
 const DEAD: int = 1
 const DONE: int = 2
+const Maps := preload("res://minigames/duck_hunt_classic/maps.gd")
 
 static var _sens: float = 1.0
 
@@ -104,6 +105,9 @@ var _bh_sweep: float = 0.0
 var _bh_vis: bool = false
 var _bh_last := Vector3.INF
 var _duck_lights: Array = []
+var _map: int = 0
+var _skin: Dictionary = {}
+var _map_label: Label
 
 var _laser: MeshInstance3D
 var _laser_dot: MeshInstance3D
@@ -133,8 +137,12 @@ var _black_tw: Tween
 func begin() -> void:
 	setup_arena(false)
 	_eye = TOWER + Vector3(0, PLATFORM_Y + 1.62, 1.15)
-	_night()
-	_build_yard()
+	_map = Maps.pick(Globals.round_seed)
+	if _map == 0:
+		_night()
+		_build_yard()
+	else:
+		_skin = Maps.new(self, Globals.round_seed).build(_map)
 	_build_tower()
 	_build_laser()
 	spawn_players(_spawn_points())
@@ -148,7 +156,7 @@ func begin() -> void:
 		for c in p.get_children():
 			if c is CollisionShape3D:
 				_shapes[id] = c
-	hud_title("DUCK HUNT CLASSIC  ·  run for the gate")
+	hud_title("DUCK HUNT CLASSIC  ·  %s  ·  run for the gate" % Maps.NAMES[_map])
 	_build_hud()
 	_you = Label3D.new()
 	_you.text = "YOU\n▼"
@@ -168,7 +176,8 @@ func _exit_tree() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 func _autopilot() -> bool:
-	return OS.get_cmdline_user_args().has("--hunter-bot")
+	var args := OS.get_cmdline_user_args()
+	return args.has("--hunter-bot") or args.has("--hunter-me")
 
 func _spawn_points() -> Array:
 	return [Vector3(1.6, 0, 29.4), Vector3(3.6, 0, 30.4), Vector3(5.6, 0, 29.4), Vector3(7.4, 0, 30.4),
@@ -450,7 +459,7 @@ func _build_tower() -> void:
 	var pivot := Node3D.new()
 	world.add_child(pivot)
 	pivot.position = TOWER
-	var leg_m := _dull("rusty_metal_02", 1.0, Color(0.9, 0.85, 0.8))
+	var leg_m := _dull(_skin_tex("leg", "rusty_metal_02"), 1.0, _skin_tint("leg", Color(0.9, 0.85, 0.8)))
 	var h := PLATFORM_Y
 	for cx in [-1.2, 1.2]:
 		for cz in [-1.2, 1.2]:
@@ -464,15 +473,15 @@ func _build_tower() -> void:
 	for k in 2:
 		var br := box(Vector3(0.08, 3.0, 0.08), Vector3(0, 2.0, -1.2 + k * 2.4), leg_m, pivot)
 		br.rotation_degrees.z = 52.0 if k == 0 else -52.0
-	box(Vector3(3.0, 0.16, 3.0), Vector3(0, h, 0), mat("black_painted_planks", 0.9, Color(0.6, 0.52, 0.42)), pivot)
-	var wall_m := _dull("corrugated_iron", 0.7, Color(0.8, 0.78, 0.72))
+	box(Vector3(3.0, 0.16, 3.0), Vector3(0, h, 0), mat(_skin_tex("deck", "black_painted_planks"), 0.9, _skin_tint("deck", Color(0.6, 0.52, 0.42))), pivot)
+	var wall_m := _dull(_skin_tex("wall", "corrugated_iron"), 0.7, _skin_tint("wall", Color(0.8, 0.78, 0.72)))
 	box(Vector3(3.0, 0.08, 0.08), Vector3(0, h + 0.95, 1.5), leg_m, pivot)
 	box(Vector3(3.0, 0.08, 0.08), Vector3(0, h + 0.5, 1.5), leg_m, pivot)
 	box(Vector3(3.0, 0.3, 0.04), Vector3(0, h + 0.15, 1.5), wall_m, pivot)
 	box(Vector3(0.06, 1.0, 3.0), Vector3(-1.5, h + 0.55, 0), wall_m, pivot)
 	box(Vector3(0.06, 1.0, 3.0), Vector3(1.5, h + 0.55, 0), wall_m, pivot)
 	box(Vector3(3.0, 1.0, 0.06), Vector3(0, h + 0.55, -1.5), wall_m, pivot)
-	var roof := box(Vector3(3.5, 0.06, 3.5), Vector3(0, h + 2.65, 0), mat("corrugated_iron", 0.8, Color(0.5, 0.45, 0.4)), pivot)
+	var roof := box(Vector3(3.5, 0.06, 3.5), Vector3(0, h + 2.65, 0), mat(_skin_tex("roof", "corrugated_iron"), 0.8, _skin_tint("roof", Color(0.5, 0.45, 0.4))), pivot)
 	roof.rotation_degrees.x = 6.0
 	for k in 8:
 		box(Vector3(0.6, 0.05, 0.05), Vector3(0, 0.4 + k * 0.5, -1.35), leg_m, pivot)
@@ -485,6 +494,12 @@ func _build_tower() -> void:
 	bulb.omni_range = 3.2
 	world.add_child(bulb)
 	bulb.position = TOWER + Vector3(0, h + 2.3, 0)
+
+func _skin_tex(part: String, def: String) -> String:
+	return String(_skin[part][0]) if _skin.has(part) else def
+
+func _skin_tint(part: String, def: Color) -> Color:
+	return _skin[part][1] if _skin.has(part) else def
 
 func _build_laser() -> void:
 	var lm := StandardMaterial3D.new()
@@ -581,6 +596,11 @@ void fragment() {
 	_pin(_reveal_label, Vector2(0.5, 0.5), Rect2(-500, -30, 1000, 70))
 	_reveal_label.modulate.a = 0.0
 	_reveal_sub.modulate.a = 0.0
+	_map_label = _label(Vector2.ZERO, 34, Color("f0d890"))
+	_map_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_pin(_map_label, Vector2(0.5, 0.0), Rect2(-500, 96, 1000, 48))
+	_map_label.text = "MAP  ·  %s" % Maps.NAMES[_map]
+	_map_label.modulate.a = 0.0
 
 func _pin(c: Control, anchor: Vector2, r: Rect2) -> void:
 	c.anchor_left = anchor.x
@@ -631,6 +651,9 @@ func _run() -> void:
 		if not bots.is_empty():
 			_pool.erase(bots[0])
 			_pool.push_front(bots[0])
+	if OS.get_cmdline_user_args().has("--hunter-me"):
+		_pool.erase(multiplayer.get_unique_id())
+		_pool.push_front(multiplayer.get_unique_id())
 	_rounds = _pool.size()
 	if _rounds <= 1:
 		_finish()
@@ -799,6 +822,10 @@ func _rpc_reveal() -> void:
 		_reveal_label.text = "YOU ARE THE HUNTER"
 	_reveal_label.modulate.a = 0.0
 	_reveal_sub.modulate.a = 0.0
+	_map_label.modulate.a = 1.0
+	var mt := _map_label.create_tween()
+	mt.tween_interval(6.5)
+	mt.tween_property(_map_label, "modulate:a", 0.0, 1.0)
 	await get_tree().create_timer(0.5).timeout
 	if not is_inside_tree():
 		return

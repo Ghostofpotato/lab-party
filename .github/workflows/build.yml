@@ -1,0 +1,46 @@
+name: Build
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+env:
+  GODOT_VERSION: 4.5-stable
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Godot and export templates
+        run: |
+          base=https://github.com/godotengine/godot/releases/download/$GODOT_VERSION
+          curl -sSLo godot.zip "$base/Godot_v${GODOT_VERSION}_linux.x86_64.zip"
+          curl -sSLo templates.tpz "$base/Godot_v${GODOT_VERSION}_export_templates.tpz"
+          unzip -q godot.zip && mv Godot_v${GODOT_VERSION}_linux.x86_64 /usr/local/bin/godot
+          tdir="$HOME/.local/share/godot/export_templates/${GODOT_VERSION/-/.}"
+          mkdir -p "$tdir" && unzip -q templates.tpz -d /tmp/t && mv /tmp/t/templates/* "$tdir/"
+          rm -f godot.zip templates.tpz
+
+      - name: Import
+        run: godot --headless --path . --import || true
+
+      - name: Export
+        run: |
+          mkdir -p out
+          godot --headless --path . --export-release "Linux" out/LabParty-Linux.x86_64
+          godot --headless --path . --export-release "Windows" out/LabParty-Windows.exe
+          ls -la out
+
+      - uses: actions/upload-artifact@v4
+        id: upload-windows
+        with:
+          name: LabParty-Windows
+          path: out/LabParty-Windows.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LabParty-Linux
+          path: out/LabParty-Linux.x86_64

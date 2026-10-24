@@ -20,10 +20,10 @@ const RISE_T: float = 0.7
 const LOCK_TIMES: Array = [3.8, 3.3, 3.0, 2.7, 2.5, 2.3, 2.1, 2.0]
 const SAFE_COUNTS: Array = [12, 9, 7, 5, 4, 3, 2, 2]
 const HIDE_FROM: int = 2
-const SHOVE_REACH: float = 1.5
+const SHOVE_REACH: float = 1.9
 const SHOVE_CD: float = 0.8
 const LUNGE: float = 0.55
-const KNOCK: float = 1.8
+const KNOCK: float = 2.7
 const SYM_NAMES: Array = ["X", "O", "SQUARE", "TRIANGLE"]
 const GREEN: Color = Color(0.18, 1.0, 0.12)
 
@@ -780,7 +780,7 @@ func _try_shove(id: int) -> void:
 		var d := to.length()
 		if d > best_d:
 			continue
-		if d > 0.6 and f.dot(to / d) < 0.4:
+		if d > 0.6 and f.dot(to / d) < 0.0:
 			continue
 		best = o
 		best_d = d

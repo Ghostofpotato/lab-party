@@ -112,7 +112,7 @@ var _drag_px: float = 0.0
 var _keys: Dictionary = {}
 var _hover: int = -1
 var _stone_mats: Array[StandardMaterial3D] = []
-var _holo_mat: ShaderMaterial
+var _holo_mat: StandardMaterial3D
 var _ghost_mat: ShaderMaterial
 var _hover_mat: StandardMaterial3D
 var _wrong_mat: StandardMaterial3D
@@ -193,8 +193,12 @@ func _make_materials() -> void:
 		_stone_mats.append(m)
 	var sh := Shader.new()
 	sh.code = HOLO_SHADER
-	_holo_mat = ShaderMaterial.new()
-	_holo_mat.shader = sh
+	_holo_mat = StandardMaterial3D.new()
+	_holo_mat.albedo_color = Color(0.93, 0.62, 0.16)
+	_holo_mat.roughness = 0.55
+	_holo_mat.emission_enabled = true
+	_holo_mat.emission = Color(0.55, 0.32, 0.05)
+	_holo_mat.emission_energy_multiplier = 0.6
 	_ghost_mat = ShaderMaterial.new()
 	_ghost_mat.shader = sh
 	_ghost_mat.set_shader_parameter("tint", Color(1.0, 0.12, 0.08))

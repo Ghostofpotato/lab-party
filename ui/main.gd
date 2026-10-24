@@ -17,9 +17,27 @@ var _mode_grid: VBoxContainer
 var _mode_count: Label
 var _score_label: Label
 var _pause: PauseMenu
+var _lab_list: VBoxContainer
+var _lab_status: Label
+var _news_row: HBoxContainer
+var _news_dots: HBoxContainer
+var _news_root: Control
+var _news_cards: Array = []
+var _news_page: int = 0
+var _news_tick: float = 0.0
+var _news_fetched_at: int = -1
+
+const NEWS_URL := "https://raw.githubusercontent.com/Ghostofpotato/lab-party/main/news.json"
+const NEWS_CACHE := "user://news.json"
+const NEWS_IMG_CACHE := "user://news/"
+const NEWS_BUNDLED := "res://ui/news.json"
+const NEWS_PER_PAGE: int = 1
+const NEWS_SECONDS: float = 8.0
+const NEWS_REFETCH_MS: int = 600000
 
 func _ready() -> void:
 	theme = UiKit.theme()
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_pause = PauseMenu.new()
 	_pause.name = "PauseMenu"
 	add_child(_pause)
@@ -29,6 +47,7 @@ func _ready() -> void:
 	NetworkManager.connection_failed.connect(func(): _toast("Connection failed. Check the address and that the host is open."))
 	NetworkManager.disconnected.connect(func(): GameManager.go(GameManager.Screen.MENU))
 	NetworkManager.game_should_start.connect(func(): GameManager.go(GameManager.Screen.SESSION))
+	NetworkManager.lan.labs_changed.connect(_refresh_labs)
 	if OS.get_cmdline_user_args().is_empty():
 		_play_intro()
 	else:
@@ -49,9 +68,16 @@ func _clear() -> void:
 	_backdrop = null
 	_lobby_list = null
 	_mode_grid = null
+	_lab_list = null
+	_lab_status = null
+	_news_row = null
+	_news_dots = null
+	_news_root = null
 
 func _on_screen(s: int) -> void:
 	_clear()
+	if s != GameManager.Screen.MENU:
+		NetworkManager.lan.stop_listening()
 	if _pause:
 		_pause.close()
 	match s:
@@ -118,19 +144,6 @@ func _build_menu() -> void:
 	list.add_theme_constant_override("separation", 2)
 	v.add_child(list)
 	list.add_child(UiKit.menu_item("Host a lab", _on_host))
-	var jbox := HBoxContainer.new()
-	jbox.add_theme_constant_override("separation", 8)
-	var join := UiKit.menu_item("Join", _on_join)
-	join.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	jbox.add_child(join)
-	_ip_edit = LineEdit.new()
-	_ip_edit.text = "127.0.0.1"
-	_ip_edit.placeholder_text = "Host address"
-	_ip_edit.custom_minimum_size = Vector2(196, 40)
-	_ip_edit.add_theme_font_size_override("font_size", 17)
-	_ip_edit.text_submitted.connect(func(_t): _on_join())
-	jbox.add_child(_ip_edit)
-	list.add_child(jbox)
 	list.add_child(UiKit.menu_item("Wardrobe", _open_wardrobe))
 	var gfx_b := UiKit.menu_item("Graphics: " + Gfx.level_name(), func(): pass)
 	gfx_b.pressed.connect(func(): Gfx.cycle(); gfx_b.text = ("Graphics: " + Gfx.level_name()).to_upper())
@@ -149,9 +162,306 @@ func _build_menu() -> void:
 	v.add_child(foot)
 	v.add_child(UiKit.label(Globals.GAME_VERSION, 11, UiKit.FAINT))
 	practice.grab_focus.call_deferred()
+	_build_lan_panel()
+	_build_news()
+
+## --- LAN labs ----------------------------------------------------------------
+
+func _build_lan_panel() -> void:
+	var m := MarginContainer.new()
+	m.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	m.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	m.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	m.add_theme_constant_override("margin_right", 40)
+	m.add_theme_constant_override("margin_bottom", MARGIN_BOTTOM)
+	add_child(m)
+	UiKit.slide_in.call_deferred(m, Vector2(28, 0), 0.12)
+	var p := UiKit.panel(16)
+	p.custom_minimum_size = Vector2(452, 0)
+	m.add_child(p)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 8)
+	p.add_child(v)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 8)
+	head.add_child(UiKit.label("Labs on your network", 14, UiKit.ACCENT))
+	head.add_child(UiKit.flex())
+	var listening := NetworkManager.lan.start_listening()
+	var dot := UiKit.pulse_dot(UiKit.ACCENT if listening else UiKit.FAINT, 7)
+	head.add_child(dot)
+	_lab_status = UiKit.label("Scanning" if listening else "Scanner offline", 12, UiKit.MUTED)
+	head.add_child(_lab_status)
+	v.add_child(head)
+	_lab_list = VBoxContainer.new()
+	_lab_list.add_theme_constant_override("separation", 4)
+	v.add_child(_lab_list)
+	if not listening:
+		var note := UiKit.text("Another copy of the game on this PC is already listening for labs. Join by IP below.", 14, UiKit.MUTED)
+		note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		v.add_child(note)
+	v.add_child(UiKit.hairline())
+	var jbox := HBoxContainer.new()
+	jbox.add_theme_constant_override("separation", 8)
+	var jl := UiKit.label("Join by IP", 13)
+	jl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	jbox.add_child(jl)
+	_ip_edit = LineEdit.new()
+	_ip_edit.text = "127.0.0.1"
+	_ip_edit.placeholder_text = "Host address"
+	_ip_edit.custom_minimum_size = Vector2(0, 36)
+	_ip_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_ip_edit.add_theme_font_size_override("font_size", 16)
+	_ip_edit.text_submitted.connect(func(_t): _on_join())
+	jbox.add_child(_ip_edit)
+	jbox.add_child(UiKit.button("Join", _on_join, 15))
+	v.add_child(jbox)
+	_refresh_labs()
+
+func _refresh_labs() -> void:
+	if not _lab_list or not is_instance_valid(_lab_list):
+		return
+	for c in _lab_list.get_children():
+		c.queue_free()
+	if not NetworkManager.lan.is_listening():
+		return
+	var labs: Array = NetworkManager.lan.labs()
+	if _lab_status:
+		_lab_status.text = ("%d found" % labs.size() if labs.size() > 0 else "Scanning").to_upper()
+	if labs.is_empty():
+		var e := UiKit.text("No labs detected. Either nobody is hosting, or they are hiding from us. Both are noted in your file.", 14, UiKit.MUTED)
+		e.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_lab_list.add_child(e)
+		return
+	for lab in labs.slice(0, 4):
+		_lab_list.add_child(_lab_row(lab))
+
+func _lab_row(lab: Dictionary) -> Control:
+	var reason := ""
+	var tag := ""
+	if int(lab.build) != Updater.BUILD:
+		tag = "Needs update"
+		reason = "Build %d here, you have %d" % [lab.build, Updater.BUILD]
+	elif lab.started:
+		tag = "In session"
+		reason = "Testing already under way. Wait for the next batch."
+	elif int(lab.players) >= int(lab.max):
+		tag = "Full"
+		reason = "Every chair is taken."
+	var row := PanelContainer.new()
+	var rs := UiKit.box(UiKit.SURFACE_HI, UiKit.LINE, 12)
+	rs.content_margin_top = 7
+	rs.content_margin_bottom = 7
+	row.add_theme_stylebox_override("panel", rs)
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 12)
+	row.add_child(h)
+	h.add_child(UiKit.chip(UiKit.ACCENT if tag == "" else UiKit.FAINT, 6, 30))
+	var names := VBoxContainer.new()
+	names.add_theme_constant_override("separation", -3)
+	names.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	h.add_child(names)
+	var nm := UiKit.strong("%s's lab" % lab.host, 17, UiKit.TEXT if tag == "" else UiKit.MUTED)
+	nm.clip_text = true
+	names.add_child(nm)
+	var sub := UiKit.text(reason if reason != "" else "%d of %d subjects   %s" % [lab.players, lab.max, lab.ip], 13, UiKit.MUTED)
+	sub.clip_text = true
+	names.add_child(sub)
+	if tag != "":
+		h.add_child(UiKit.pill(tag, UiKit.DANGER if tag == "Needs update" else UiKit.MUTED))
+	var b := UiKit.primary("Join", _join_lab.bind(lab), 16) if tag == "" else UiKit.button("Join", func(): pass, 15)
+	b.custom_minimum_size = Vector2(76, 38)
+	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	b.set_meta("lan_sid", lab.sid)
+	b.disabled = tag != ""
+	var tip := reason
+	if tag == "Needs update":
+		tip += ". " + ("Restart the game to get the update." if int(lab.build) > Updater.BUILD else "The host needs to update.")
+	b.tooltip_text = tip
+	row.tooltip_text = tip
+	h.add_child(b)
+	return row
+
+func _join_lab(lab: Dictionary) -> void:
+	_apply_name()
+	if NetworkManager.join(str(lab.ip), int(lab.port)) != OK:
+		_toast("Could not reach %s's lab." % lab.host)
+
+## --- news cards --------------------------------------------------------------
+
+func _build_news() -> void:
+	var m := MarginContainer.new()
+	m.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	m.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	m.add_theme_constant_override("margin_right", 40)
+	m.add_theme_constant_override("margin_top", MARGIN_TOP)
+	add_child(m)
+	_news_root = m
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 8)
+	m.add_child(v)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 10)
+	head.add_child(UiKit.label("Facility bulletin", 13, UiKit.ACCENT))
+	head.add_child(UiKit.flex())
+	_news_dots = HBoxContainer.new()
+	_news_dots.add_theme_constant_override("separation", 2)
+	head.add_child(_news_dots)
+	v.add_child(head)
+	_news_row = HBoxContainer.new()
+	_news_row.custom_minimum_size = Vector2(452, 0)
+	_news_row.add_theme_constant_override("separation", 12)
+	v.add_child(_news_row)
+	_news_cards = _parse_news(_read_text(NEWS_CACHE))
+	if _news_cards.is_empty():
+		_news_cards = _parse_news(_read_text(NEWS_BUNDLED))
+	_news_page = 0
+	_news_tick = 0.0
+	_show_news_page(true)
+	var t := Timer.new()
+	t.wait_time = 0.5
+	t.autostart = true
+	m.add_child(t)
+	t.timeout.connect(_news_timer)
+	if _news_fetched_at < 0 or Time.get_ticks_msec() - _news_fetched_at > NEWS_REFETCH_MS:
+		var http := HTTPRequest.new()
+		http.timeout = 6.0
+		m.add_child(http)
+		http.request_completed.connect(_on_news_fetched.bind(http))
+		if http.request(NEWS_URL) != OK:
+			http.queue_free()
+
+func _news_timer() -> void:
+	if not _news_root or not is_instance_valid(_news_root):
+		return
+	_news_root.visible = not (Updater._panel != null and Updater._panel.visible)
+	_news_tick += 0.5
+	if _news_tick >= NEWS_SECONDS and _news_pages() > 1:
+		_news_tick = 0.0
+		_news_page = (_news_page + 1) % _news_pages()
+		_show_news_page(false)
+
+func _news_pages() -> int:
+	return ceili(_news_cards.size() / float(NEWS_PER_PAGE))
+
+func _show_news_page(first: bool) -> void:
+	if not _news_row or not is_instance_valid(_news_row):
+		return
+	for c in _news_row.get_children():
+		c.queue_free()
+	for c in _news_dots.get_children():
+		c.queue_free()
+	var pages := _news_pages()
+	for i in pages:
+		var d := Button.new()
+		d.custom_minimum_size = Vector2(18, 14)
+		d.focus_mode = Control.FOCUS_NONE
+		d.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		for st in ["normal", "hover", "pressed", "hover_pressed"]:
+			d.add_theme_stylebox_override(st, StyleBoxEmpty.new())
+		var c := UiKit.chip(UiKit.ACCENT if i == _news_page else Color(1, 1, 1, 0.22), 14 if i == _news_page else 6, 6)
+		c.set_anchors_preset(Control.PRESET_CENTER)
+		c.position = Vector2(9 - c.custom_minimum_size.x * 0.5, 4)
+		d.add_child(c)
+		d.pressed.connect(func(): _news_page = i; _news_tick = 0.0; _show_news_page(false))
+		_news_dots.add_child(d)
+	var start := _news_page * NEWS_PER_PAGE
+	for card in _news_cards.slice(start, start + NEWS_PER_PAGE):
+		var tex := _news_texture(card)
+		var w := UiKit.news_card(card.tag, card.title, card.lines, UiKit.accent_named(card.accent), tex)
+		w.custom_minimum_size = Vector2(452, 0)
+		w.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		w.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+		_news_row.add_child(w)
+		if tex == null and str(card.image).begins_with("https://"):
+			_fetch_news_image(str(card.image), w)
+	UiKit.stagger(_news_row, 0.25 if first else 0.0, 0.09)
+	if first:
+		UiKit.slide_in.call_deferred(_news_root, Vector2(28, 0), 0.08)
+
+func _read_text(path: String) -> String:
+	return FileAccess.get_file_as_string(path) if FileAccess.file_exists(path) else ""
+
+func _parse_news(raw: String) -> Array:
+	var out: Array = []
+	var d: Variant = JSON.parse_string(raw) if raw != "" else null
+	if not d is Dictionary or not d.get("cards") is Array:
+		return out
+	for c: Variant in d.cards:
+		if not c is Dictionary or str(c.get("title", "")) == "":
+			continue
+		var lines: Array = []
+		if c.get("lines") is Array:
+			for l: Variant in c.lines.slice(0, 2):
+				lines.append(str(l).left(90))
+		out.append({
+			"tag": str(c.get("tag", "Notice")).left(24),
+			"title": str(c.get("title", "")).left(40),
+			"lines": lines,
+			"accent": str(c.get("accent", "amber")),
+			"image": str(c.get("image", "")),
+		})
+		if out.size() >= 10:
+			break
+	return out
+
+func _news_texture(card: Dictionary) -> Texture2D:
+	var src := str(card.image)
+	if src.begins_with("res://") and ResourceLoader.exists(src):
+		return load(src) as Texture2D
+	if src.begins_with("https://"):
+		var cached := NEWS_IMG_CACHE + src.md5_text() + "." + ("png" if src.ends_with(".png") else "jpg")
+		if FileAccess.file_exists(cached):
+			var img := Image.load_from_file(ProjectSettings.globalize_path(cached))
+			if img:
+				return ImageTexture.create_from_image(img)
+		var local := "res://ui/news/" + src.get_file()
+		if ResourceLoader.exists(local):
+			return load(local) as Texture2D
+	return null
+
+func _fetch_news_image(url: String, card: PanelContainer) -> void:
+	var http := HTTPRequest.new()
+	http.timeout = 6.0
+	http.body_size_limit = 1048576
+	card.add_child(http)
+	http.request_completed.connect(func(result: int, code: int, _h: PackedStringArray, body: PackedByteArray):
+		http.queue_free()
+		if result != HTTPRequest.RESULT_SUCCESS or code != 200:
+			return
+		var img := Image.new()
+		var err := img.load_png_from_buffer(body) if url.ends_with(".png") else img.load_jpg_from_buffer(body)
+		if err != OK:
+			return
+		DirAccess.make_dir_recursive_absolute(NEWS_IMG_CACHE)
+		var f := FileAccess.open(NEWS_IMG_CACHE + url.md5_text() + "." + ("png" if url.ends_with(".png") else "jpg"), FileAccess.WRITE)
+		if f:
+			f.store_buffer(body)
+		UiKit.set_news_card_image(card, ImageTexture.create_from_image(img)))
+	if http.request(url) != OK:
+		http.queue_free()
+
+func _on_news_fetched(result: int, code: int, _h: PackedStringArray, body: PackedByteArray, http: HTTPRequest) -> void:
+	http.queue_free()
+	_news_fetched_at = Time.get_ticks_msec()
+	if result != HTTPRequest.RESULT_SUCCESS or code != 200:
+		print("[LP] NEWS fetch failed ", result, " ", code)
+		return
+	var raw := body.get_string_from_utf8()
+	var cards := _parse_news(raw)
+	if cards.is_empty():
+		return
+	var f := FileAccess.open(NEWS_CACHE, FileAccess.WRITE)
+	if f:
+		f.store_string(raw)
+	if JSON.stringify(cards) != JSON.stringify(_news_cards):
+		_news_cards = cards
+		_news_page = 0
+		_news_tick = 0.0
+		_show_news_page(false)
 
 func _open_wardrobe() -> void:
 	_apply_name()
+	NetworkManager.lan.stop_listening()
 	_clear()
 	var w := Wardrobe.new()
 	add_child(w)
@@ -173,6 +483,7 @@ func _on_practice() -> void:
 func _on_host() -> void:
 	_apply_name()
 	if NetworkManager.host() == OK:
+		NetworkManager.advertise_lan()
 		GameManager.go(GameManager.Screen.LOBBY)
 	else:
 		_toast("Host failed. Is the port already in use?")
@@ -441,6 +752,7 @@ func _build_session() -> void:
 	var area := Control.new()
 	area.name = "GameArea"
 	area.set_anchors_preset(Control.PRESET_FULL_RECT)
+	area.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(area)
 
 	var rd := RoundDirector.new()

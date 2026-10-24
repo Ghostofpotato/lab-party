@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "cards": [
+    {"tag": "In development", "title": "Teaching the roomba remorse", "lines": ["It said sorry once. Then it did it again."], "accent": "amber", "image": "res://ui/news/roomba.jpg"},
+    {"tag": "Patch notes", "title": "Subjects now 12% less screamy", "lines": ["Screaming has been moved to a later build."], "accent": "green", "image": "res://ui/news/screamy.jpg"},
+    {"tag": "Known issues", "title": "Survival", "lines": ["Some subjects keep surviving. Engineers are on it."], "accent": "red", "image": "res://ui/news/survival.jpg"},
+    {"tag": "Now hiring", "title": "Interns (again)", "lines": ["The last one has been reassigned to the floor."], "accent": "amber", "image": "res://ui/news/hiring.jpg"},
+    {"tag": "HR notice", "title": "Fun is now mandatory", "lines": ["Smiling is logged. Not smiling is also logged."], "accent": "muted", "image": "res://ui/news/hr.jpg"},
+    {"tag": "Lost and found", "title": "One hat, still warm", "lines": ["Owner can collect it from the incinerator."], "accent": "muted", "image": "res://ui/news/lost.jpg"},
+    {"tag": "Cafeteria", "title": "Dinner with management", "lines": ["Eat when he looks away. Do not ask about the gun."], "accent": "amber", "image": "res://ui/news/cafeteria.jpg"},
+    {"tag": "Safety record", "title": "Days without incident: 0", "lines": ["A new personal best. The old one was also 0."], "accent": "red", "image": "res://ui/news/safety.jpg"}
+  ]
+}

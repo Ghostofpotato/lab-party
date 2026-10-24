@@ -162,6 +162,8 @@ var _ended: bool = false
 var _bot: Dictionary = {}
 
 var _boss: LabCharacter
+var _boss_shades: Node
+var _boss_masked: bool = false
 var _boss_gun: Node3D
 var _boss_tw: Tween
 var _boss_lamp: OmniLight3D
@@ -513,6 +515,13 @@ func _build_boss() -> void:
 	_boss.position = BOSS_POS
 	world.add_child(_boss)
 	_attach_shades(_boss)
+	var face := _office_face_bytes()
+	if not face.is_empty():
+		_apply_face(face)
+		if NetworkManager.is_server():
+			get_tree().create_timer(1.5).timeout.connect(func() -> void:
+				if is_inside_tree():
+					_rpc_face.rpc(face))
 	var att := BoneAttachment3D.new()
 	att.bone_name = "hand_r"
 	_boss.skeleton.add_child(att)
@@ -544,6 +553,76 @@ func _build_boss() -> void:
 	key.position = BOSS_POS + Vector3(0.0, 2.75, 0.9)
 	key.look_at(BOSS_POS + Vector3(0.0, 1.2, 0.0), Vector3.UP)
 
+func _office_face_bytes() -> PackedByteArray:
+	var dirs: Array[String] = [OS.get_executable_path().get_base_dir() + "/office", ProjectSettings.globalize_path("user://office")]
+	for d in dirs:
+		for ext in ["png", "jpg", "jpeg", "webp"]:
+			var p: String = "%s/boss_face.%s" % [d, ext]
+			if not FileAccess.file_exists(p):
+				continue
+			var img := Image.load_from_file(p)
+			if img == null or img.is_empty():
+				continue
+			if img.get_height() > 384:
+				img.resize(int(384.0 * img.get_width() / img.get_height()), 384, Image.INTERPOLATE_LANCZOS)
+			print("[LP] office face ", p)
+			return img.save_png_to_buffer()
+	return PackedByteArray()
+
+func _face_texture(bytes: PackedByteArray) -> ImageTexture:
+	var img := Image.new()
+	if bytes.is_empty() or img.load_png_from_buffer(bytes) != OK:
+		return null
+	img.convert(Image.FORMAT_RGBA8)
+	if img.detect_alpha() == Image.ALPHA_NONE:
+		var w: int = img.get_width()
+		var h: int = img.get_height()
+		for y in h:
+			for x in w:
+				var dx: float = (x - w * 0.5) / (w * 0.44)
+				var dy: float = (y - h * 0.5) / (h * 0.5)
+				if dx * dx + dy * dy > 1.0:
+					img.set_pixel(x, y, Color(0, 0, 0, 0))
+	return ImageTexture.create_from_image(img)
+
+func _apply_face(bytes: PackedByteArray) -> void:
+	if _boss_masked or not is_instance_valid(_boss):
+		return
+	var tex := _face_texture(bytes)
+	if tex == null:
+		return
+	if _boss_shades and is_instance_valid(_boss_shades):
+		_boss_shades.queue_free()
+	_attach_face_mask(_boss, tex)
+	_boss_masked = true
+	print("[LP] office face applied")
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_face(bytes: PackedByteArray) -> void:
+	_apply_face(bytes)
+
+func _attach_face_mask(body: LabCharacter, tex: ImageTexture) -> void:
+	var att := BoneAttachment3D.new()
+	att.bone_name = "Head"
+	body.skeleton.add_child(att)
+	var q := QuadMesh.new()
+	q.size = Vector2(0.3 * tex.get_width() / tex.get_height(), 0.3)
+	var m := StandardMaterial3D.new()
+	m.albedo_texture = tex
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	m.alpha_scissor_threshold = 0.5
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	m.roughness = 0.9
+	q.material = m
+	var mi := MeshInstance3D.new()
+	mi.mesh = q
+	mi.layers = 2
+	att.add_child(mi)
+	var sk := body.skeleton
+	var head_rest := sk.global_transform * sk.get_bone_global_rest(sk.find_bone("Head"))
+	var want := Transform3D(body.global_transform.basis, body.global_transform * Vector3(0.0, 1.63, 0.125))
+	mi.transform = head_rest.affine_inverse() * want
+
 func _attach_shades(body: LabCharacter) -> void:
 	var path := "res://assets/hats/hat_shades.glb"
 	if not ResourceLoader.exists(path):
@@ -552,6 +631,7 @@ func _attach_shades(body: LabCharacter) -> void:
 	var att := BoneAttachment3D.new()
 	att.bone_name = "Head"
 	sk.add_child(att)
+	_boss_shades = att
 	var h: Node3D = load(path).instantiate()
 	att.add_child(h)
 	var head_rest := sk.global_transform * sk.get_bone_global_rest(sk.find_bone("Head"))

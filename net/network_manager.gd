@@ -25,8 +25,13 @@ var local_name: String = "Player"
 var players: Dictionary = {}
 
 var _next_bot_id: int = 1001
+var lan: LanDiscovery
 
 func _ready() -> void:
+	lan = LanDiscovery.new()
+	lan.name = "LanDiscovery"
+	add_child(lan)
+	game_should_start.connect(func(): lan.session_started = true)
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	multiplayer.connected_to_server.connect(_on_connected)
@@ -67,7 +72,16 @@ func join(address: String, port: int = DEFAULT_PORT) -> int:
 	multiplayer.multiplayer_peer = backend.peer
 	return OK
 
+## Announce this lab on the LAN until close().
+func advertise_lan() -> void:
+	if is_server():
+		lan.start_beacon(_beacon_info)
+
+func _beacon_info() -> Dictionary:
+	return {"host": local_name, "players": players.size(), "max": MAX_PLAYERS, "port": DEFAULT_PORT}
+
 func close() -> void:
+	lan.stop_beacon()
 	if multiplayer.multiplayer_peer:
 		multiplayer.multiplayer_peer.close()
 	multiplayer.multiplayer_peer = null

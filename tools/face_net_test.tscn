@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://labpartyfacenet"]
+
+[ext_resource type="Script" path="res://tools/face_net_test.gd" id="1"]
+
+[node name="FaceNetTest" type="Node"]
+script = ExtResource("1")

@@ -542,7 +542,7 @@ func _process(delta: float) -> void:
 		var m: ArmPose = s.mod
 		m.active = _clock > float(s.get("hold", 0.0))
 	var lp := local_player()
-	if lp and lp.alive and _running:
+	if lp and lp.alive and _clock > START_DELAY:
 		var down := Input.is_physical_key_pressed(KEY_SPACE)
 		if down != _space_down:
 			_space_down = down

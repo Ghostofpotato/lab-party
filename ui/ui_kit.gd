@@ -463,6 +463,95 @@ static func scrim(from_left: bool = true, reach: float = 0.62, strength: float =
 	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return tr
 
+## Named accent from data ("amber", "green", "red", "muted", "text") to a kit colour.
+static func accent_named(n: String) -> Color:
+	match n.to_lower():
+		"green", "ok": return OK
+		"red", "danger": return DANGER
+		"muted", "grey", "gray": return MUTED
+		"text", "white": return TEXT
+	return ACCENT
+
+## Glass news card: image on the left (full height, rounded outer corners) with
+## an accent rule beside it, then tag pill, display title and up to two lines.
+static func news_card(tag: String, title: String, lines: Array, accent: Color = ACCENT, image: Texture2D = null, image_w: float = 224.0) -> PanelContainer:
+	var p := panel(0)
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 0)
+	p.add_child(h)
+	var mask := Panel.new()
+	mask.name = "ImageMask"
+	var ms := StyleBoxFlat.new()
+	ms.bg_color = Color.WHITE
+	ms.corner_radius_top_left = R_PANEL
+	ms.corner_radius_bottom_left = R_PANEL
+	ms.corner_detail = 8
+	ms.anti_aliasing = true
+	mask.add_theme_stylebox_override("panel", ms)
+	mask.clip_children = CanvasItem.CLIP_CHILDREN_ONLY
+	mask.custom_minimum_size = Vector2(image_w, image_w * 9.0 / 16.0)
+	mask.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var tr := TextureRect.new()
+	tr.name = "Image"
+	tr.set_anchors_preset(Control.PRESET_FULL_RECT)
+	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	tr.texture = image
+	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mask.add_child(tr)
+	mask.visible = image != null
+	h.add_child(mask)
+	var rule := ColorRect.new()
+	rule.name = "ImageRule"
+	rule.color = Color(accent, 0.85)
+	rule.custom_minimum_size = Vector2(2, 0)
+	rule.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rule.visible = image != null
+	h.add_child(rule)
+	var m := MarginContainer.new()
+	m.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for k in ["margin_left", "margin_right"]:
+		m.add_theme_constant_override(k, 14)
+	m.add_theme_constant_override("margin_top", 12)
+	m.add_theme_constant_override("margin_bottom", 12)
+	h.add_child(m)
+	var body := VBoxContainer.new()
+	body.add_theme_constant_override("separation", 2)
+	body.alignment = BoxContainer.ALIGNMENT_CENTER
+	m.add_child(body)
+	body.add_child(pill(tag, accent, false, 12))
+	body.add_child(spacer(4))
+	var t := heading(title, 23)
+	t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body.add_child(t)
+	for line in lines.slice(0, 2):
+		var l := text(str(line), 14, MUTED.lightened(0.12))
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		body.add_child(l)
+	return p
+
+## Swap in an image on a card made by news_card (e.g. after a download).
+static func set_news_card_image(card: Control, image: Texture2D) -> void:
+	if not is_instance_valid(card):
+		return
+	var tr := card.find_child("Image", true, false) as TextureRect
+	if tr:
+		tr.texture = image
+		card.find_child("ImageMask", true, false).visible = true
+		card.find_child("ImageRule", true, false).visible = true
+		fade_in(tr, 0.0, 0.3)
+
+## Small pulsing dot, e.g. a live "scanning" indicator.
+static func pulse_dot(color: Color = ACCENT, side: float = 8.0) -> Panel:
+	var d := chip(color, side, side)
+	var s := d.get_theme_stylebox("panel") as StyleBoxFlat
+	s.set_corner_radius_all(99)
+	s.set_border_width_all(0)
+	var tw := d.create_tween().set_loops().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tw.tween_property(d, "modulate:a", 0.25, 0.7)
+	tw.tween_property(d, "modulate:a", 1.0, 0.7)
+	return d
+
 ## Tiny vector glyphs so icons never depend on font coverage.
 class Glyph extends Control:
 	var kind: String = "play"

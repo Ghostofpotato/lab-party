@@ -4,7 +4,7 @@ extends Node
 ## one from GitHub Releases, checks its SHA-256, swaps it in and restarts. Only active in exported builds
 ## (or with --updater-exe=<path> for testing). Publish with tools/push_update.sh.
 
-const BUILD: int = 5
+const BUILD: int = 6
 const MANIFEST_URL := "https://github.com/Ghostofpotato/lab-party/releases/latest/download/latest.json"
 
 var exe_path: String = ""

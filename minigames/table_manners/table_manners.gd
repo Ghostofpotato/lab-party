@@ -24,6 +24,7 @@ const BAR_PX: int = 100
 const SPOON_REACH: float = 0.2
 const MOUTH := Vector3(0.0, 0.035, 0.115)
 const GUN_BASIS := Basis(Vector3(0.03, 0.97, -0.24), Vector3(-0.03, 0.24, 0.97), Vector3(1.0, -0.02, 0.03))
+const FaceWrap := preload("res://minigames/table_manners/face_wrap.gd")
 const MUZZLE := Vector3(0.12, 0.032, 0.0)
 
 enum St { COUNTDOWN, EAT, DONE }
@@ -164,6 +165,9 @@ var _bot: Dictionary = {}
 var _boss: LabCharacter
 var _boss_shades: Node
 var _boss_masked: bool = false
+var _face_local: bool = false
+var _face_bytes := PackedByteArray()
+var _face_waiting: Array[int] = []
 var _boss_gun: Node3D
 var _boss_tw: Tween
 var _boss_lamp: OmniLight3D
@@ -515,13 +519,7 @@ func _build_boss() -> void:
 	_boss.position = BOSS_POS
 	world.add_child(_boss)
 	_attach_shades(_boss)
-	var face := _office_face_bytes()
-	if not face.is_empty():
-		_apply_face(face)
-		if NetworkManager.is_server():
-			get_tree().create_timer(1.5).timeout.connect(func() -> void:
-				if is_inside_tree():
-					_rpc_face.rpc(face))
+	_share_face()
 	var att := BoneAttachment3D.new()
 	att.bone_name = "hand_r"
 	_boss.skeleton.add_child(att)
@@ -569,7 +567,7 @@ func _office_face_bytes() -> PackedByteArray:
 			return img.save_png_to_buffer()
 	return PackedByteArray()
 
-func _face_texture(bytes: PackedByteArray) -> ImageTexture:
+func _face_image(bytes: PackedByteArray) -> Image:
 	var img := Image.new()
 	if bytes.is_empty() or img.load_png_from_buffer(bytes) != OK:
 		return null
@@ -583,45 +581,81 @@ func _face_texture(bytes: PackedByteArray) -> ImageTexture:
 				var dy: float = (y - h * 0.5) / (h * 0.5)
 				if dx * dx + dy * dy > 1.0:
 					img.set_pixel(x, y, Color(0, 0, 0, 0))
-	return ImageTexture.create_from_image(img)
+	return img
 
 func _apply_face(bytes: PackedByteArray) -> void:
 	if _boss_masked or not is_instance_valid(_boss):
 		return
-	var tex := _face_texture(bytes)
-	if tex == null:
+	var img := _face_image(bytes)
+	if img == null:
+		return
+	var mipped: Image = img.duplicate()
+	mipped.generate_mipmaps()
+	if not FaceWrap.apply(_boss, ImageTexture.create_from_image(mipped), img):
 		return
 	if _boss_shades and is_instance_valid(_boss_shades):
 		_boss_shades.queue_free()
-	_attach_face_mask(_boss, tex)
 	_boss_masked = true
 	print("[LP] office face applied")
 
+func _share_face() -> void:
+	var own := _office_face_bytes()
+	_face_local = not own.is_empty()
+	if _face_local:
+		_apply_face(own)
+	if NetworkManager.is_server():
+		if _face_local and _face_bytes.is_empty():
+			_server_take_face(own)
+		elif not _face_bytes.is_empty():
+			_apply_face(_face_bytes)
+		return
+	if _face_local:
+		_rpc_offer_face.rpc_id(1, own)
+	_rpc_face_ready.rpc_id(1)
+
+func _server_take_face(bytes: PackedByteArray) -> void:
+	_face_bytes = bytes
+	_apply_face(bytes)
+	for id in _face_waiting:
+		_rpc_face.rpc_id(id, bytes)
+	_face_waiting.clear()
+
+@rpc("any_peer", "call_remote", "reliable")
+func _rpc_offer_face(bytes: PackedByteArray) -> void:
+	if not NetworkManager.is_server() or not _face_bytes.is_empty() or _face_image(bytes) == null:
+		return
+	_cache_face(bytes)
+	_server_take_face(bytes)
+
+@rpc("any_peer", "call_remote", "reliable")
+func _rpc_face_ready() -> void:
+	if not NetworkManager.is_server():
+		return
+	var id := multiplayer.get_remote_sender_id()
+	if _face_bytes.is_empty():
+		if not id in _face_waiting:
+			_face_waiting.append(id)
+	else:
+		_rpc_face.rpc_id(id, _face_bytes)
+
 @rpc("authority", "call_remote", "reliable")
 func _rpc_face(bytes: PackedByteArray) -> void:
+	if _face_image(bytes) == null:
+		return
+	_cache_face(bytes)
 	_apply_face(bytes)
 
-func _attach_face_mask(body: LabCharacter, tex: ImageTexture) -> void:
-	var att := BoneAttachment3D.new()
-	att.bone_name = "Head"
-	body.skeleton.add_child(att)
-	var q := QuadMesh.new()
-	q.size = Vector2(0.3 * tex.get_width() / tex.get_height(), 0.3)
-	var m := StandardMaterial3D.new()
-	m.albedo_texture = tex
-	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
-	m.alpha_scissor_threshold = 0.5
-	m.cull_mode = BaseMaterial3D.CULL_DISABLED
-	m.roughness = 0.9
-	q.material = m
-	var mi := MeshInstance3D.new()
-	mi.mesh = q
-	mi.layers = 2
-	att.add_child(mi)
-	var sk := body.skeleton
-	var head_rest := sk.global_transform * sk.get_bone_global_rest(sk.find_bone("Head"))
-	var want := Transform3D(body.global_transform.basis, body.global_transform * Vector3(0.0, 1.63, 0.125))
-	mi.transform = head_rest.affine_inverse() * want
+func _cache_face(bytes: PackedByteArray) -> void:
+	if _face_local or OS.get_environment("LP_NO_FACE_CACHE") == "1":
+		return
+	var path := "user://office/boss_face.png"
+	if FileAccess.file_exists(path) and FileAccess.get_file_as_bytes(path) == bytes:
+		return
+	DirAccess.make_dir_recursive_absolute("user://office")
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	if f:
+		f.store_buffer(bytes)
+		print("[LP] office face cached")
 
 func _attach_shades(body: LabCharacter) -> void:
 	var path := "res://assets/hats/hat_shades.glb"

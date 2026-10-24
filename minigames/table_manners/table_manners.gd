@@ -544,7 +544,7 @@ func _build_boss() -> void:
 	_boss_lamp.position = BOSS_POS + Vector3(0.0, 2.1, 0.55)
 	var key := SpotLight3D.new()
 	key.light_color = Color(1.0, 0.82, 0.6)
-	key.light_energy = 3.0
+	key.light_energy = 1.4
 	key.spot_range = 3.5
 	key.spot_angle = 30.0
 	world.add_child(key)

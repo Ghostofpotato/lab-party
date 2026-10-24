@@ -26,22 +26,23 @@ uniform float specular = 0.38;
 uniform float rim = 0.5;
 uniform vec3 skin_tint = vec3(1.0);
 uniform sampler2D face_tex : source_color, filter_linear_mipmap, repeat_disable;
-uniform float face_gain = 1.0;
-uniform float face_glow = 0.5;
+uniform float face_gain = 0.88;
+uniform float face_glow = 0.06;
 uniform float blur_lod = 5.0;
 uniform float face_mix = 1.0;
 
 void fragment() {
 	vec3 skin = texture(base_tex, UV).rgb * base_color.rgb * skin_tint;
 	vec4 f = texture(face_tex, UV2);
+	f.rgb = clamp((f.rgb - 0.45) * 1.18 + 0.45, 0.0, 1.0);
 	vec2 edge = smoothstep(vec2(0.0), vec2(0.02), UV2) * smoothstep(vec2(0.0), vec2(0.02), vec2(1.0) - UV2);
 	float a = min(f.a, textureLod(face_tex, UV2, blur_lod).a);
 	float m = clamp(COLOR.r, 0.0, 1.0) * smoothstep(0.7, 0.99, a) * face_mix * edge.x * edge.y;
 	ALBEDO = mix(skin, f.rgb * face_gain, m);
 	ROUGHNESS = mix(roughness * texture(rough_tex, UV).r, 0.62, m);
-	SPECULAR = mix(specular, 0.3, m);
+	SPECULAR = mix(specular, 0.2, m);
 	EMISSION = f.rgb * m * face_glow;
-	RIM = rim * (1.0 - 0.6 * m);
+	RIM = rim * (1.0 - 0.9 * m);
 	RIM_TINT = 0.5;
 	if (has_normal) {
 		NORMAL_MAP = mix(texture(normal_tex, UV).rgb, vec3(0.5, 0.5, 1.0), m);
